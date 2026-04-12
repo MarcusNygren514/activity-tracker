@@ -8,7 +8,9 @@ import ctypes
 import ctypes.wintypes
 import os
 import json
+import shutil
 import logging
+import tempfile
 import threading
 import psutil
 from datetime import datetime
@@ -36,7 +38,8 @@ psapi    = ctypes.windll.psapi
 kernel32 = ctypes.windll.kernel32
 
 BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
-DOC_EXTS = {'.docx','.doc','.xlsx','.xls','.pptx','.ppt','.pdf','.txt','.csv','.odt','.ods','.odp'}
+DOC_EXTS = {'.docx','.doc','.xlsx','.xls','.pptx','.ppt','.pdf','.txt','.csv','.odt','.ods','.odp',
+            '.vsdx','.vsd','.vsdm','.dwg','.dxf','.mpp','.mpt'}
 
 # Executor för timeout-skyddade anrop
 _executor = ThreadPoolExecutor(max_workers=2)
@@ -180,6 +183,88 @@ def get_document_path(pid, title):
         return future.result(timeout=2)
     except Exception:
         return None
+
+
+# ── Webbläsarhistorik ─────────────────────────────────────────
+
+# Chrome/Edge sparar tid som mikrosekunder sedan 1601-01-01
+_CHROME_EPOCH_DELTA = 11644473600  # sekunder mellan 1601-01-01 och 1970-01-01
+
+def _browser_history_paths() -> dict:
+    """Returnerar alla tillgängliga History-filer för Chrome och Edge (alla profiler)."""
+    paths = {}
+    for browser, base in [
+        ("chrome", Path.home() / "AppData/Local/Google/Chrome/User Data"),
+        ("edge",   Path.home() / "AppData/Local/Microsoft/Edge/User Data"),
+    ]:
+        if not base.exists():
+            continue
+        for profile_dir in base.iterdir():
+            if not profile_dir.is_dir():
+                continue
+            h = profile_dir / "History"
+            if h.exists():
+                key = f"{browser}_{profile_dir.name}"
+                paths[key] = h
+    return paths
+
+
+def _chrome_ts_to_datetime(chrome_ts: int) -> datetime:
+    """Konverterar Chrome-tidsstämpel (µs sedan 1601) till datetime (UTC)."""
+    epoch_sec = chrome_ts / 1_000_000 - _CHROME_EPOCH_DELTA
+    return datetime.fromtimestamp(epoch_sec)
+
+
+def get_browser_urls(start: datetime, end: datetime) -> list[dict]:
+    """
+    Läser Chrome/Edge-historik och returnerar URL:er besökta inom [start, end].
+    Kopierar DB-filen till temp för att undvika låsningsproblem.
+    Returnerar lista med {url, title, visited_at, browser}.
+    """
+    start_chrome = int((start.timestamp() + _CHROME_EPOCH_DELTA) * 1_000_000)
+    end_chrome   = int((end.timestamp()   + _CHROME_EPOCH_DELTA) * 1_000_000)
+
+    results = []
+    for browser, path in _browser_history_paths().items():
+        if not path.exists():
+            continue
+        tmp = None
+        try:
+            tmp = Path(tempfile.mktemp(suffix=".db"))
+            shutil.copy2(path, tmp)
+            conn = sqlite3.connect(str(tmp))
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("""
+                SELECT url, title, last_visit_time
+                FROM urls
+                WHERE last_visit_time BETWEEN ? AND ?
+                ORDER BY last_visit_time
+            """, (start_chrome, end_chrome)).fetchall()
+            conn.close()
+            for row in rows:
+                url = row["url"]
+                if url.startswith(("chrome://", "chrome-extension://", "edge://", "data:", "about:")):
+                    continue
+                results.append({
+                    "url":        url,
+                    "title":      row["title"] or "",
+                    "visited_at": _chrome_ts_to_datetime(row["last_visit_time"]).isoformat(),
+                    "browser":    browser,
+                })
+        except Exception as e:
+            logging.warning(f"Kunde inte läsa {browser}-historik: {e}")
+        finally:
+            if tmp and tmp.exists():
+                try:
+                    tmp.unlink()
+                except Exception:
+                    pass
+
+    # Deduplicera på URL – behåll senaste besök
+    seen = {}
+    for r in results:
+        seen[r["url"]] = r
+    return list(seen.values())
 
 
 # ── Databas ────────────────────────────────────────────────────

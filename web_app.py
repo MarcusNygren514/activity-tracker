@@ -15,9 +15,26 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, render_template_string, jsonify, request, Response
 
-VERSION    = "v0.11b"
-DB_PATH    = Path.home() / "activity_tracker" / "activity.db"
-CONFIG_PATH = Path.home() / "activity_tracker" / "app_config.json"
+try:
+    import tracker as _tracker
+except ImportError:
+    _tracker = None
+
+try:
+    import planner as _planner
+except ImportError:
+    _planner = None
+
+# Projektkodsmönster: P eller S följt av exakt 5 siffror
+_PS_CODE_RE = re.compile(r'[PS]\d{5}')
+
+# Webbläsarprocesser – synkroniserat med tracker.py
+BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
+
+VERSION         = "v0.13b"
+DB_PATH         = Path.home() / "activity_tracker" / "activity.db"
+CONFIG_PATH     = Path.home() / "activity_tracker" / "app_config.json"
+PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "planning_cache.json"
 app = Flask(__name__)
 
 
@@ -217,6 +234,20 @@ a.row-link:hover{opacity:1;text-decoration:underline}
 }
 .has-tooltip:hover .tip{display:block}
 
+/* Projektsammanfattning */
+.proj-summary{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px 18px;margin-bottom:20px;display:none}
+.proj-summary.visible{display:block}
+.proj-summary-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px}
+.proj-summary-title{font-size:13px;font-weight:700;color:var(--accent)}
+.proj-summary-total{font-size:20px;font-weight:800;color:var(--accent)}
+.proj-summary-sub{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-left:6px}
+.proj-summary-row{display:flex;align-items:center;gap:10px;padding:3px 0}
+.proj-summary-label{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.proj-summary-bar{flex:1.2;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.proj-summary-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .3s}
+.proj-summary-dur{font-size:11px;font-family:var(--mono);color:var(--text);white-space:nowrap;width:52px;text-align:right}
+
 /* Duration bar */
 .dur-bar{display:flex;align-items:center;gap:8px}
 .dur-track{width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0}
@@ -335,6 +366,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div class="nav-item" data-page="gantt" onclick="showPage(this)"><span class="nav-icon">▤</span> Tidslinje<button class="nav-help" onclick="event.stopPropagation();showHelp('gantt')" title="Hjälp">?</button></div>
     <div class="nav-item" data-page="ai" onclick="showPage(this)"><span class="nav-icon">◈</span> Maj-Britt<button class="nav-help" onclick="event.stopPropagation();showHelp('ai')" title="Hjälp">?</button></div>
     <div class="nav-item" data-page="feedback" onclick="showPage(this)"><span class="nav-icon">✉</span> Feedback<button class="nav-help" onclick="event.stopPropagation();showHelp('feedback')" title="Hjälp">?</button></div>
+    <div class="nav-item" data-page="plansettings" onclick="showPage(this)"><span class="nav-icon">⚙</span> Inställningar</div>
     <div class="sidebar-footer"><span class="status-dot"></span>Tracker aktiv</div>
   </div>
 </nav>
@@ -358,6 +390,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div class="filters sticky-filters">
       <label>Från</label><input type="date" id="dash-from">
       <label>Till</label><input type="date" id="dash-to">
+      <button class="btn btn-primary" onclick="loadDashboard()">Uppdatera</button>
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('dash-from','dash-to','today',loadDashboard)">Idag</button>
         <button class="btn-quick" onclick="setQuick('dash-from','dash-to','yesterday',loadDashboard)">Igår</button>
@@ -365,7 +398,6 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         <button class="btn-quick" id="dash-week-btn" onclick="setQuick('dash-from','dash-to','week',loadDashboard)">V?</button>
         <button class="btn-quick" onclick="stepWeek('dash',1,loadDashboard)">→</button>
       </div>
-      <button class="btn btn-primary" onclick="loadDashboard()">Uppdatera</button>
       <div class="prog-filter-btn">
         <button class="btn btn-ghost" onclick="openProgFilter('dashboard')">⊞ Program<span id="prog-filter-count-dashboard"></span></button>
         <div class="prog-filter-panel" id="prog-filter-dashboard" style="display:none">
@@ -443,9 +475,13 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         <option value="1">Aktivt fönster</option>
         <option value="0">Bakgrund</option>
       </select>
+      <select id="per-project" onchange="loadPeriods(1)" title="Filtrera på projekt">
+        <option value="">Alla projekt</option>
+      </select>
       <button class="btn btn-primary" onclick="loadPeriods(1)">Sök</button>
       <button class="btn btn-ghost" onclick="exportCSV()">↓ CSV</button>
     </div>
+    <div class="proj-summary" id="per-proj-summary"></div>
     <div class="table-wrap">
       <table>
         <thead><tr>
@@ -472,6 +508,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div class="filters">
       <label>Från</label><input type="date" id="apps-from">
       <label>Till</label><input type="date" id="apps-to">
+      <button class="btn btn-primary" onclick="loadApps()">Uppdatera</button>
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('apps-from','apps-to','today',loadApps)">Idag</button>
         <button class="btn-quick" onclick="setQuick('apps-from','apps-to','yesterday',loadApps)">Igår</button>
@@ -484,7 +521,10 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         <option value="1">Bara aktivt fönster</option>
         <option value="0">Bara bakgrund</option>
       </select>
-      <button class="btn btn-primary" onclick="loadApps()">Uppdatera</button>
+      <select id="apps-project" onchange="loadApps()" title="Filtrera på projekt">
+        <option value="">Alla projekt</option>
+      </select>
+      <div class="proj-summary" id="apps-proj-summary" style="margin-top:16px;margin-bottom:0"></div>
       <div class="prog-filter-btn">
         <button class="btn btn-ghost" onclick="openProgFilter('apps')">⊞ Program<span id="prog-filter-count-apps"></span></button>
         <div class="prog-filter-panel" id="prog-filter-apps" style="display:none">
@@ -531,6 +571,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div class="filters">
       <label>Från</label><input type="datetime-local" id="gantt-from">
       <label>Till</label><input type="datetime-local" id="gantt-to">
+      <button class="btn btn-primary" onclick="loadGantt()">Uppdatera</button>
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('gantt-from','gantt-to','today',loadGantt,true)">Idag</button>
         <button class="btn-quick" onclick="setQuick('gantt-from','gantt-to','yesterday',loadGantt,true)">Igår</button>
@@ -538,7 +579,9 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         <button class="btn-quick" id="gantt-week-btn" onclick="setQuick('gantt-from','gantt-to','week',loadGantt,true)">V?</button>
         <button class="btn-quick" onclick="stepWeek('gantt',1,loadGantt,true)">→</button>
       </div>
-      <button class="btn btn-primary" onclick="loadGantt()">Uppdatera</button>
+      <select id="gantt-project" onchange="loadGantt(); if(planningData) renderPlanning(planningData, this.value);" title="Filtrera på projekt">
+        <option value="">Alla projekt</option>
+      </select>
       <div class="prog-filter-btn">
         <button class="btn btn-ghost" onclick="openProgFilter('gantt')">⊞ Program<span id="prog-filter-count-gantt"></span></button>
         <div class="prog-filter-panel" id="prog-filter-gantt" style="display:none">
@@ -553,6 +596,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         </div>
       </div>
     </div>
+    <div class="proj-summary" id="gantt-proj-summary"></div>
     <div id="gantt-outer" style="border:1px solid var(--border);border-radius:var(--r);background:var(--surface);overflow:hidden">
       <!-- Sticky tidsaxel -->
       <div style="position:sticky;top:0;z-index:10;background:var(--surface)">
@@ -569,6 +613,16 @@ a.row-link:hover{opacity:1;text-decoration:underline}
       <span style="display:inline-block;width:12px;height:8px;background:var(--muted);border-radius:2px;vertical-align:middle;opacity:.5"></span> Bakgrund
     </div>
     <div id="gantt-detail" style="margin-top:16px"></div>
+
+    <!-- Resursplanering -->
+    <div id="planning-section" style="display:none;margin-top:32px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+        <h3 style="margin:0;font-size:15px">Resursplanering</h3>
+        <button onclick="loadPlanning()" class="btn-secondary" style="padding:5px 14px;font-size:12px">⟳ Ladda aktiviteter</button>
+      </div>
+      <div id="planning-last-loaded" style="font-size:11px;color:var(--muted);margin-bottom:12px"></div>
+      <div id="planning-gantt"></div>
+    </div>
   </div>
 
   <!-- AI-chat -->
@@ -683,6 +737,41 @@ a.row-link:hover{opacity:1;text-decoration:underline}
           cursor:pointer;font-size:13px;padding:0;margin-left:6px;text-decoration:underline">
           Registrera dig här →
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Inställningar ─────────────────────────────────────────── -->
+  <div id="page-plansettings" class="page">
+    <h1>Inställningar</h1><p class="subtitle">Anpassa Activity Tracker</p>
+    <div style="max-width:560px">
+      <h3 style="margin:0 0 8px;font-size:15px">Resursplanering</h3>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 20px">
+        Koppla Activity Tracker mot Oaks Resursplanering för att se planerade aktiviteter
+        i Tidslinje-fliken. Filen läses lokalt – inget skickas någonstans.
+        Ange sökvägen till Excel-filen och ditt namn exakt som det står i RESURS-kolumnen.
+      </p>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <label class="toggle-label">
+          <input type="checkbox" id="plan-enabled" onchange="savePlanSettings()">
+          <span>Aktivera resursplanering</span>
+        </label>
+      </div>
+      <div id="plan-fields">
+        <div style="margin-bottom:14px">
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Sökväg till Resursplanering.xlsm</label>
+          <input id="plan-file" type="text" placeholder="C:\Users\...\Oaks Resursplanering.xlsm"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+            padding:8px 12px;color:var(--text);font-size:13px;box-sizing:border-box">
+        </div>
+        <div style="margin-bottom:14px">
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Ditt namn i filen (RESURS-kolumnen)</label>
+          <input id="plan-resource" type="text" placeholder="Förnamn Efternamn"
+            style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+            padding:8px 12px;color:var(--text);font-size:13px;box-sizing:border-box">
+        </div>
+        <button onclick="savePlanSettings()" class="btn-primary" style="padding:8px 20px">Spara</button>
+        <span id="plan-status" style="font-size:12px;color:var(--muted)"></span>
       </div>
     </div>
   </div>
@@ -842,7 +931,7 @@ function showPage(el) {
   if(el.dataset.page==='periods')   loadPeriods(1);
   if(el.dataset.page==='apps')      loadApps();
   if(el.dataset.page==='sessions')  loadSessions();
-  if(el.dataset.page==='gantt')     loadGantt();
+  if(el.dataset.page==='gantt')     { loadGantt(); autoLoadPlanning(); }
   if(el.dataset.page==='ai')        loadAiSettings();
 }
 
@@ -871,7 +960,9 @@ function toggleSidebar() {
 document.addEventListener('mousemove', e => {
   const tip = e.target.closest('.has-tooltip')?.querySelector('.tip');
   if (tip) {
-    tip.style.left = (e.clientX + 12) + 'px';
+    const tipW = tip.offsetWidth || 200;
+    const overflowsRight = (e.clientX + 12 + tipW) > window.innerWidth;
+    tip.style.left = overflowsRight ? (e.clientX - tipW - 8) + 'px' : (e.clientX + 12) + 'px';
     tip.style.top  = (e.clientY + 12) + 'px';
   }
 });
@@ -924,6 +1015,8 @@ document.addEventListener('DOMContentLoaded', () => {
   FILTER_VIEWS.forEach(updateProgFilterBadge);
   loadDashboard();
   initRegistration();
+  initPlanSettings();
+  initProjectDropdowns();
 });
 
 // ── Hjälp ──────────────────────────────────────────────────
@@ -1170,7 +1263,7 @@ async function loadDashboard() {
 
   document.getElementById('kpi-grid').innerHTML = `
     <div class="kpi"><div class="kpi-label">Total aktiv tid</div><div class="kpi-value">${fmtDur(d.total_active_sec)}</div><div class="kpi-sub">aktivt fönster</div></div>
-    <div class="kpi green"><div class="kpi-label">Total öppen tid</div><div class="kpi-value">${fmtDur(d.total_open_sec)}</div><div class="kpi-sub">inkl. bakgrund</div></div>
+    <div class="kpi green"><div class="kpi-label">Tid vid datorn</div><div class="kpi-value">${fmtDur(d.total_unique_sec)}</div><div class="kpi-sub">unik tid, inkl. bakgrund</div></div>
     <div class="kpi red"><div class="kpi-label">Program</div><div class="kpi-value">${d.unique_apps}</div><div class="kpi-sub">unika applikationer</div></div>
     <div class="kpi"><div class="kpi-label">Perioder</div><div class="kpi-value">${d.total_periods}</div><div class="kpi-sub">loggade aktiviteter</div></div>
   `;
@@ -1226,40 +1319,81 @@ function truncatePath(path, maxLen = 60) {
 }
 
 function titleCell(title, url, exe, procName) {
-  const tip = url || exe || '';
-  const tipShort = truncatePath(tip);
+  const isUrl = url && (url.startsWith('http://') || url.startsWith('https://'));
+  const tip   = isUrl ? url : truncatePath(exe || '');
+
+  const linkIcon = isUrl
+    ? ` <a href="${url}" target="_blank" rel="noopener"
+           title="${url}"
+           style="color:var(--accent);text-decoration:none;font-size:12px;flex-shrink:0"
+           onclick="event.stopPropagation()">🔗</a>`
+    : '';
 
   return `<td class="title-cell">
-    <span class="title-text has-tooltip" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-      ${title||'—'}
-      ${tipShort ? `<span class="tip">${tipShort}</span>` : ''}
+    <span class="has-tooltip" style="display:flex;align-items:center;gap:4px;overflow:hidden">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${title||'—'}</span>
+      ${linkIcon}
+      ${tip && !isUrl ? `<span class="tip">${tip}</span>` : ''}
     </span>
   </td>`;
 }
+
+const BROWSER_PROCS = new Set(['chrome.exe','msedge.exe','firefox.exe','brave.exe','opera.exe']);
 
 async function loadPeriods(page) {
   if(page<1) return;
   currentPage=page;
   const from=document.getElementById('per-from').value, to=document.getElementById('per-to').value;
   const search=document.getElementById('per-search').value, active=document.getElementById('per-active').value;
-  const params=new URLSearchParams({from,to,search,active,sort:perSort,dir:perDir,page,limit:50});
-  const r=await fetch('/api/periods?'+params);
-  const d=await r.json();
+  const project=document.getElementById('per-project').value;
+  const params=new URLSearchParams({from,to,search,active,project,sort:perSort,dir:perDir,page,limit:50});
+  const [perResp, histResp] = await Promise.all([
+    fetch('/api/periods?'+params),
+    fetch(`/api/browser-history?from=${from}&to=${to}`),
+  ]);
+  const d    = await perResp.json();
+  const hist = await histResp.json().catch(()=>({urls:[]}));
 
-  document.getElementById('per-body').innerHTML = d.rows.map(row=>`
-    <tr>
+  // Bygg ett lookup: visited_at (sekund) → url för snabb matchning
+  const urlByTime = {};
+  for (const h of (hist.urls||[])) {
+    const sec = h.visited_at.slice(0,19);
+    urlByTime[sec] = h.url;
+  }
+
+  function browserUrl(row) {
+    if (!BROWSER_PROCS.has((row.process_name||'').toLowerCase())) return null;
+    const start = new Date(row.started_at).getTime();
+    const end   = row.ended_at ? new Date(row.ended_at).getTime() : start;
+    // Matcha URL:er besökta inom perioden (±30s marginal)
+    const match = (hist.urls||[]).filter(h => {
+      const t = new Date(h.visited_at).getTime();
+      return t >= (start - 30000) && t <= (end + 30000);
+    });
+    if (!match.length) return null;
+    return match[match.length-1].url;
+  }
+
+  document.getElementById('per-body').innerHTML = d.rows.map(row=>{
+    const url = row.url || browserUrl(row);
+    return `<tr>
       <td class="nowrap">${row.process_name||'—'}</td>
-      ${titleCell(row.window_title, row.url, row.exe_path, row.process_name)}
+      ${titleCell(row.window_title, url, row.exe_path, row.process_name)}
       <td class="mono nowrap">${fmtTs(row.started_at)}</td>
       <td class="mono nowrap">${fmtTs(row.ended_at)}</td>
       <td class="mono nowrap">${fmtDur(row.duration_sec)}</td>
       <td><span class="badge ${row.is_active?'badge-active':'badge-bg'}">${row.is_active?'Aktivt':'Bakgrund'}</span></td>
-    </tr>`).join('') || '<tr><td colspan="6" style="color:var(--muted);padding:20px;text-align:center">Inga resultat</td></tr>';
+    </tr>`;
+  }).join('') || '<tr><td colspan="6" style="color:var(--muted);padding:20px;text-align:center">Inga resultat</td></tr>';
 
   const pages=Math.ceil(d.total/50);
   document.getElementById('per-pageinfo').textContent=`Sida ${page} / ${pages} (${d.total.toLocaleString()} perioder)`;
   document.getElementById('per-prev').disabled=page<=1;
   document.getElementById('per-next').disabled=page>=pages;
+  if (page === 1) {
+    refreshProjectDropdown('per-project', from, to);
+    updateProjectSummary('per-proj-summary', document.getElementById('per-project').value, from, to);
+  }
 }
 
 function sortPer(col) {
@@ -1274,12 +1408,88 @@ async function exportCSV() {
   window.location=`/api/export?from=${from}&to=${to}&search=${search}&active=${active}`;
 }
 
+// ── Projektdropdown ────────────────────────────────────────────
+async function updateProjectSummary(cardId, project, from, to) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+  if (!project) { card.classList.remove('visible'); return; }
+  const r = await fetch(`/api/project-summary?project=${encodeURIComponent(project)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+  const d = await r.json();
+  if (!d.ok || !d.total_sec) { card.classList.remove('visible'); return; }
+  const maxSec = d.top_titles[0]?.sec || 1;
+  const label = d.project_name ? `${d.project_num} – ${d.project_name}` : d.project_num;
+
+  // Planerad tid: visa endast om exakt en hel vecka är vald och vi har planeringsdata
+  let plannedHtml = '';
+  const weekCode = selectedFullWeek();
+  if (weekCode && planningData) {
+    const plannedHours = planningData
+      .filter(row => row.project.startsWith(project) && row.week === weekCode)
+      .reduce((s, row) => s + row.hours, 0);
+    if (plannedHours > 0) {
+      const weekLabel = 'V ' + parseInt(weekCode.slice(3));
+      plannedHtml = `
+    <div class="proj-summary-row" style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
+      <span class="proj-summary-label" style="color:var(--muted)">Planerad tid ${weekLabel}</span>
+      <div class="proj-summary-bar"><div class="proj-summary-fill" style="width:100%;background:var(--accent);opacity:0.4"></div></div>
+      <span class="proj-summary-dur" style="color:var(--accent)">${plannedHours}h</span>
+    </div>`;
+    }
+  }
+
+  card.innerHTML = `
+    <div class="proj-summary-header">
+      <span class="proj-summary-title">${label}</span>
+      <span><span class="proj-summary-total">${fmtDur(d.total_sec)}</span><span class="proj-summary-sub">förgrundstid</span></span>
+    </div>
+    ${d.top_titles.map(t => `
+    <div class="proj-summary-row">
+      <span class="proj-summary-label" title="${t.title}">${t.title}</span>
+      <div class="proj-summary-bar"><div class="proj-summary-fill" style="width:${(t.sec/maxSec*100).toFixed(1)}%"></div></div>
+      <span class="proj-summary-dur">${fmtDur(t.sec)}</span>
+    </div>`).join('')}${plannedHtml}`;
+  card.classList.add('visible');
+}
+
+async function refreshProjectDropdown(dropdownId, from, to) {
+  const url = (from && to)
+    ? `/api/active-projects?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+    : '/api/active-projects';
+  const d = await fetch(url).then(r => r.json()).catch(() => null);
+  if (!d?.ok) return;
+  const sel = document.getElementById(dropdownId);
+  if (!sel) return;
+  const current = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  for (const p of d.projects) {
+    const opt = document.createElement('option');
+    opt.value = p.number;
+    opt.textContent = p.number;
+    opt.title = p.name ? `${p.number} – ${p.name}` : p.number;
+    sel.appendChild(opt);
+  }
+  // Återställ val om projektet fortfarande finns i listan
+  if (current && [...sel.options].some(o => o.value === current)) sel.value = current;
+}
+
+async function initProjectDropdowns() {
+  // Initialt: ladda alla kända projekt (utan datumfilter)
+  await Promise.all([
+    refreshProjectDropdown('per-project',  '', ''),
+    refreshProjectDropdown('apps-project', '', ''),
+    refreshProjectDropdown('gantt-project','', ''),
+  ]);
+}
+
 // ── Program ────────────────────────────────────────────────────
 async function loadApps() {
   const from=document.getElementById('apps-from').value, to=document.getElementById('apps-to').value;
   const active=document.getElementById('apps-active').value;
+  const project=document.getElementById('apps-project').value;
   const r=await fetch(`/api/apps?from=${from}&to=${to}&active=${active}`);
   const d=await r.json();
+  refreshProjectDropdown('apps-project', from, to);
+  updateProjectSummary('apps-proj-summary', project, from, to);
   const visRows = d.filter(row => isProgVisible('apps', row.process_name));
   const maxSec = visRows[0]?.total_sec||1;
 
@@ -1289,13 +1499,13 @@ async function loadApps() {
       <td>
         <div class="dur-bar">
           <div class="dur-track"><div class="dur-fill" style="width:${(row.total_sec/maxSec*100).toFixed(1)}%"></div></div>
-          <span class="mono">${fmtDur(row.total_sec)}</span>
+          <span class="mono has-tooltip">${fmtDur(row.total_sec)}<span class="tip">Tid i förgrunden + bakgrunden</span></span>
         </div>
       </td>
       <td class="mono">${row.period_count}</td>
-      <td class="mono">${fmtDur(Math.round(row.total_sec/row.period_count))}</td>
+      <td class="mono has-tooltip">${fmtDur(Math.round(row.total_sec/row.period_count))}<span class="tip">Genomsnittlig period-längd</span></td>
       <td class="mono">${fmtTs(row.last_seen)}</td>
-      <td><button class="btn btn-ghost" style="padding:3px 10px;font-size:10px" onclick="toggleTitles(this,'${encodeURIComponent(row.process_name)}','${from}','${to}','${active}')">▶ Titlar</button></td>
+      <td><button class="btn btn-ghost" style="padding:3px 10px;font-size:10px" onclick="toggleTitles(this,'${encodeURIComponent(row.process_name)}','${from}','${to}','${active}','${project}')">▶ Titlar</button></td>
     </tr>
     <tr id="titles-${i}" style="display:none">
       <td colspan="6" style="padding:0 14px 12px 32px;background:rgba(0,0,0,.2)">
@@ -1304,7 +1514,7 @@ async function loadApps() {
     </tr>`).join('');
 }
 
-async function toggleTitles(btn, procEncoded, from, to, active) {
+async function toggleTitles(btn, procEncoded, from, to, active, project='') {
   const proc = decodeURIComponent(procEncoded);
   const row = btn.closest('tr');
   const idx = [...document.querySelectorAll('#apps-body tr')].indexOf(row);
@@ -1321,23 +1531,186 @@ async function toggleTitles(btn, procEncoded, from, to, active) {
   titleRow.style.display = '';
   content.textContent = 'Laddar...';
 
-  const r = await fetch(`/api/app_titles?proc=${encodeURIComponent(proc)}&from=${from}&to=${to}&active=${active}`);
-  const titles = await r.json();
+  const isBrowser = BROWSER_PROCS.has(proc.toLowerCase());
+  const [titlesResp, histResp] = await Promise.all([
+    fetch(`/api/app_titles?proc=${encodeURIComponent(proc)}&from=${from}&to=${to}&active=${active}&project=${project}`),
+    isBrowser ? fetch(`/api/browser-history?from=${from}&to=${to}`) : Promise.resolve(null),
+  ]);
+  const titles = await titlesResp.json();
+  const hist   = histResp ? await histResp.json().catch(()=>({urls:[]})) : {urls:[]};
 
   if (!titles.length) { content.textContent = 'Inga titlar hittades.'; return; }
   content.innerHTML = titles.map(t => {
-    const tip = truncatePath(t.url || t.exe_path || '');
+    // Hitta URL som matchar titeln eller tidsintervallet
+    let url = t.url;
+    if (!url && isBrowser && hist.urls.length) {
+      const match = hist.urls.find(h => h.title === t.window_title) ||
+                    hist.urls.find(h => t.window_title && h.title && h.title.includes(t.window_title.replace(/ - Google Chrome| - Microsoft Edge/,'')));
+      if (match) url = match.url;
+    }
+    const isUrl = url && (url.startsWith('http://') || url.startsWith('https://'));
+    const tip   = isUrl ? '' : truncatePath(t.exe_path || '');
+
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border)">
-      <span class="has-tooltip" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1">
-        ${t.window_title||'—'}
-        ${tip ? `<span class="tip">${tip}</span>` : ''}
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;display:flex;align-items:center;gap:6px">
+        <span class="has-tooltip" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+          ${t.window_title||'—'}
+          ${tip ? `<span class="tip">${tip}</span>` : ''}
+        </span>
+        ${isUrl ? `<a href="${url}" target="_blank" rel="noopener" title="${url}"
+             style="color:var(--accent);text-decoration:none;font-size:12px;flex-shrink:0"
+             onclick="event.stopPropagation()">🔗</a>` : ''}
       </span>
-      <span class="mono" style="margin-left:16px;flex-shrink:0;color:var(--accent)">${fmtDur(t.total_sec)}</span>
+      <span class="mono has-tooltip" style="margin-left:16px;flex-shrink:0;color:var(--accent)">${fmtDur(t.total_sec)}<span class="tip">${t.active_sec ? 'Förgrund: ' + fmtDur(t.active_sec) + (t.total_sec - t.active_sec > 0 ? ' / Bakgrund: ' + fmtDur(t.total_sec - t.active_sec) : '') : 'Tid i bakgrunden'}</span></span>
     </div>`;
   }).join('');
 }
 
+// ── Resursplanering ────────────────────────────────────────────
+
+async function initPlanSettings() {
+  const r = await fetch('/api/planning-config');
+  const cfg = await r.json();
+  document.getElementById('plan-enabled').checked  = cfg.enabled;
+  document.getElementById('plan-file').value        = cfg.file;
+  document.getElementById('plan-resource').value    = cfg.resource;
+  document.getElementById('planning-section').style.display = cfg.enabled ? '' : 'none';
+}
+
+async function savePlanSettings() {
+  const enabled  = document.getElementById('plan-enabled').checked;
+  const file     = document.getElementById('plan-file').value.trim();
+  const resource = document.getElementById('plan-resource').value.trim();
+  const status   = document.getElementById('plan-status');
+  await fetch('/api/planning-config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled, file, resource}),
+  });
+  status.textContent = 'Sparat ✓';
+  setTimeout(() => status.textContent = '', 2000);
+  document.getElementById('planning-section').style.display = enabled ? '' : 'none';
+}
+
+async function autoLoadPlanning() {
+  const cfg = await fetch('/api/planning-config').then(r => r.json());
+  if (cfg.enabled) loadPlanning();
+}
+
+function isoWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return [Math.ceil(((d - yearStart) / 86400000 + 1) / 7), d.getUTCFullYear()];
+}
+
+function weekCodeFromDate(date) {
+  const [w, y] = isoWeek(date);
+  return 'V' + String(y % 100).padStart(2,'0') + String(w).padStart(2,'0');
+}
+
+// Returnerar veckkoden (t.ex. "V2615") om from–to är exakt en hel ISO-vecka, annars null.
+function selectedFullWeek() {
+  const fromVal = document.getElementById('gantt-from')?.value;
+  const toVal   = document.getElementById('gantt-to')?.value;
+  if (!fromVal || !toVal) return null;
+  const f = new Date(fromVal), t = new Date(toVal);
+  if (f.getDay() !== 1) return null;           // måste börja på måndag
+  const days = (t - f) / (1000 * 3600 * 24);
+  if (days < 6.9 || days > 7.1) return null;  // måste vara ~7 dagar
+  return weekCodeFromDate(f);
+}
+
+function renderPlanning(rows, selectedProject) {
+  const gantt = document.getElementById('planning-gantt');
+  if (!rows || !rows.length) { gantt.textContent = 'Inga planerade aktiviteter för perioden.'; return; }
+
+  const [curWeek, curISOYear] = isoWeek(new Date());
+  const curWeekStr = 'V' + String(curISOYear % 100).padStart(2,'0') + String(curWeek).padStart(2,'0');
+  const weeks = [...new Set(rows.map(r => r.week))].sort();
+  const colW = 70;
+
+  let html = `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;width:100%">
+    <thead><tr>
+      <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;min-width:180px">Projekt / Aktivitet</th>
+      ${weeks.map(w => {
+        const label = 'V ' + parseInt(w.slice(3));
+        const isCur = w === curWeekStr;
+        return `<th style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:center;width:${colW}px;white-space:nowrap;${isCur?'color:var(--accent);font-weight:700':'color:var(--muted);font-weight:400'}">${label}${isCur?' ◀':''}</th>`;
+      }).join('')}
+    </tr>
+    <tr style="background:var(--bg)">
+      <td style="padding:4px 10px;font-size:11px;color:var(--muted);border-bottom:2px solid var(--border)">Totalt</td>
+      ${weeks.map(w => {
+        const visRows = selectedProject ? rows.filter(r => r.project.startsWith(selectedProject)) : rows;
+        const tot = visRows.filter(r => r.week === w).reduce((s, r) => s + r.hours, 0);
+        const isCur = w === curWeekStr;
+        return `<td style="padding:4px 4px;text-align:center;border-bottom:2px solid var(--border);font-family:var(--mono);font-size:12px;${isCur?'color:var(--accent);font-weight:700':'color:var(--muted)'}">${tot>0?tot+'h':''}</td>`;
+      }).join('')}
+    </tr></thead><tbody>`;
+
+  const grouped = {};
+  for (const row of rows) {
+    const key = row.project + '|||' + row.activity;
+    if (!grouped[key]) grouped[key] = {project: row.project, activity: row.activity, weeks: {}};
+    grouped[key].weeks[row.week] = row.hours;
+  }
+
+  for (const [, g] of Object.entries(grouped)) {
+    // Om projekt är valt: dölj rader som inte tillhör det
+    const isMatch = !selectedProject || g.project.startsWith(selectedProject);
+    if (!isMatch) continue;
+    const rowStyle = selectedProject
+      ? 'border-left:3px solid var(--accent);background:rgba(var(--accent-rgb,0,229,255),.06)'
+      : '';
+    html += `<tr style="${rowStyle}">
+      <td style="padding:5px 10px;border-bottom:1px solid var(--border);color:var(--text)">
+        <span style="color:${selectedProject?'var(--accent)':'var(--muted)'};font-size:11px">${g.project}</span><br>
+        <span>${g.activity}</span>
+      </td>
+      ${weeks.map(w => {
+        const h = g.weeks[w] || 0;
+        const isCur = w === curWeekStr;
+        return h
+          ? `<td style="padding:5px 4px;text-align:center;border-bottom:1px solid var(--border)">
+               <div style="background:${isCur?'var(--accent)':'var(--border)'};color:${isCur?'#000':'var(--muted)'};border-radius:4px;padding:2px 6px;font-weight:600;font-family:var(--mono)">${h}h</div></td>`
+          : `<td style="border-bottom:1px solid var(--border)"></td>`;
+      }).join('')}
+    </tr>`;
+  }
+
+  html += '</tbody></table></div>';
+  gantt.innerHTML = html;
+}
+
+async function loadPlanning() {
+  const gantt = document.getElementById('planning-gantt');
+  gantt.textContent = 'Laddar…';
+
+  const now  = new Date();
+  const mon  = new Date(now); mon.setDate(now.getDate() - ((now.getDay()+6)%7));
+  const from = new Date(mon); from.setDate(mon.getDate() - 14);
+  const to   = new Date(mon); to.setDate(mon.getDate() + 62);
+  const fmt  = d => d.toISOString().slice(0,10);
+
+  const r = await fetch(`/api/planning?from=${fmt(from)}&to=${fmt(to)}`);
+  const d = await r.json();
+
+  const lastLoaded = document.getElementById('planning-last-loaded');
+  if (!d.ok) { gantt.textContent = d.error || 'Kunde inte ladda planering'; return; }
+
+  const now2 = new Date();
+  const cacheNote = d.from_cache
+    ? ` &nbsp;<span style="color:var(--muted)">(från cache – ${d.cached_at ? d.cached_at.slice(0,16).replace('T','&nbsp;&nbsp;') : ''})</span>`
+    : '';
+  lastLoaded.innerHTML = `Senast laddad: ${now2.toLocaleDateString('sv-SE')} &nbsp;&nbsp; ${String(now2.getHours()).padStart(2,'0')}:${String(now2.getMinutes()).padStart(2,'0')}${cacheNote}`;
+
+  planningData = d.rows;
+  renderPlanning(planningData, document.getElementById('gantt-project')?.value || '');
+}
+
 // ── Tidslinje (Gantt) ──────────────────────────────────────────
+let planningData  = null;   // cachad planeringsdata för att kunna omrendera vid projektbyte
 let ganttData     = null;
 let ganttOffsetX  = 0;
 let ganttScale    = 1;      // px per sekund
@@ -1373,17 +1746,19 @@ function initGanttDates() {
 }
 
 async function loadGantt() {
-  const from = document.getElementById('gantt-from').value;
-  const to   = document.getElementById('gantt-to').value;
+  const from    = document.getElementById('gantt-from').value;
+  const to      = document.getElementById('gantt-to').value;
+  const project = document.getElementById('gantt-project').value;
   if (!from || !to) return;
-  const r = await fetch(`/api/gantt?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+  const r = await fetch(`/api/gantt?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&project=${project}`);
   ganttData = (await r.json()).filter(g => isProgVisible('gantt', g.process_name));
   ganttExpandedRows.clear();
   ganttOffsetX = 0;
   drawGantt();
+  refreshProjectDropdown('gantt-project', from, to);
+  updateProjectSummary('gantt-proj-summary', project, from, to);
 }
 
-function ganttZoom(factor) {} // borttagen – behålls tom för bakåtkompatibilitet
 
 function drawGantt() {
   if (!ganttData) return;
@@ -1435,6 +1810,7 @@ function drawGantt() {
     muted:   cs.getPropertyValue('--muted').trim(),
     text:    cs.getPropertyValue('--text').trim(),
     accent2: cs.getPropertyValue('--accent2').trim(),
+    font:    cs.getPropertyValue('--font').trim() || 'Plus Jakarta Sans, sans-serif',
   };
 
   const timelineX = x => LABEL_W + ganttOffsetX + x * ganttScale;
@@ -1561,7 +1937,7 @@ function drawGantt() {
     ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(totalW,y); ctx.stroke();
 
     ctx.fillStyle = isActive ? C.text : C.muted;
-    ctx.font = isProc ? '12px Syne' : '11px JetBrains Mono';
+    ctx.font = isProc ? `13px ${C.font}` : `11px ${C.font}`;
     ctx.textAlign = 'left';
 
     let displayLabel;
@@ -1634,7 +2010,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Hovring på label
         const d = row.data;
         if (row.type === 'proc') {
-          found = d.process_name + (d.total_sec ? ' · ' + fmtDur(d.total_sec) : '');
+          const parts = [d.process_name];
+          if (d.active_sec)  parts.push(fmtDur(d.active_sec)  + ' aktiv');
+          if (d.total_sec)   parts.push(fmtDur(d.total_sec)   + ' totalt');
+          found = parts.join(' · ');
         } else {
           const path = truncatePath(d.url || d.exe_path || '');
           found = d.window_title + (path ? '\n' + path : '');
@@ -2070,9 +2449,27 @@ def api_dashboard():
     db = get_db()
 
     total_active = db.execute(f"SELECT COALESCE(SUM(p.duration_sec),0) FROM periods p WHERE {df} AND p.is_active=1", params).fetchone()[0]
-    total_open   = db.execute(f"SELECT COALESCE(SUM(p.duration_sec),0) FROM periods p WHERE {df}", params).fetchone()[0]
     unique_apps  = db.execute(f"SELECT COUNT(DISTINCT p.process_name) FROM periods p WHERE {df}", params).fetchone()[0]
     total_per    = db.execute(f"SELECT COUNT(*) FROM periods p WHERE {df}", params).fetchone()[0]
+
+    # Unik tid vid datorn: slå ihop överlappande perioder och summera
+    all_periods = db.execute(
+        f"SELECT started_at, ended_at FROM periods p WHERE {df} ORDER BY started_at", params
+    ).fetchall()
+    total_unique = 0
+    cur_start = cur_end = None
+    for row in all_periods:
+        s = datetime.fromisoformat(row["started_at"])
+        e = datetime.fromisoformat(row["ended_at"])
+        if cur_start is None:
+            cur_start, cur_end = s, e
+        elif s <= cur_end:
+            cur_end = max(cur_end, e)
+        else:
+            total_unique += int((cur_end - cur_start).total_seconds())
+            cur_start, cur_end = s, e
+    if cur_start is not None:
+        total_unique += int((cur_end - cur_start).total_seconds())
 
     top_apps = db.execute(
         f"SELECT p.process_name, SUM(p.duration_sec) as total_sec FROM periods p WHERE {df} AND p.is_active=1 GROUP BY p.process_name ORDER BY total_sec DESC LIMIT 15",
@@ -2089,8 +2486,8 @@ def api_dashboard():
 
     db.close()
     return jsonify({
-        "total_active_sec": total_active,
-        "total_open_sec":   total_open,
+        "total_active_sec":  total_active,
+        "total_unique_sec":  total_unique,
         "unique_apps":      unique_apps,
         "total_periods":    total_per,
         "top_apps":         [dict(r) for r in top_apps],
@@ -2098,17 +2495,39 @@ def api_dashboard():
     })
 
 
+@app.route("/api/browser-history")
+def api_browser_history():
+    from_str = request.args.get("from", "")
+    to_str   = request.args.get("to", "")
+    try:
+        start = datetime.fromisoformat(from_str) if from_str else datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        end   = datetime.fromisoformat(to_str)   if to_str   else datetime.now()
+        # Om bara datum angetts (ingen tid) sätt end till slutet av dagen
+        if to_str and len(to_str) <= 10:
+            end = end.replace(hour=23, minute=59, second=59)
+    except ValueError:
+        return jsonify({"error": "Ogiltigt datumformat"}), 400
+    try:
+        if _tracker is None:
+            return jsonify({"error": "tracker ej tillgänglig"}), 500
+        urls = _tracker.get_browser_urls(start, end)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"urls": urls})
+
+
 @app.route("/api/periods")
 def api_periods():
-    from_date = request.args.get("from","")
-    to_date   = request.args.get("to","")
-    search    = request.args.get("search","")
-    active    = request.args.get("active","")
-    sort_col  = request.args.get("sort","started_at")
-    sort_dir  = request.args.get("dir","desc")
-    page      = max(1, int(request.args.get("page",1)))
-    limit     = int(request.args.get("limit",50))
-    offset    = (page-1)*limit
+    from_date   = request.args.get("from","")
+    to_date     = request.args.get("to","")
+    search      = request.args.get("search","")
+    active      = request.args.get("active","")
+    project_num = request.args.get("project","")
+    sort_col    = request.args.get("sort","started_at")
+    sort_dir    = request.args.get("dir","desc")
+    page        = max(1, int(request.args.get("page",1)))
+    limit       = int(request.args.get("limit",50))
+    offset      = (page-1)*limit
 
     allowed = {"started_at","ended_at","duration_sec","process_name","is_active"}
     if sort_col not in allowed: sort_col="started_at"
@@ -2125,22 +2544,65 @@ def api_periods():
 
     where=" AND ".join(clauses)
     db=get_db()
-    total = db.execute(f"SELECT COUNT(*) FROM periods p WHERE {where}", p).fetchone()[0]
-    rows  = db.execute(
-        f"SELECT p.process_name, p.window_title, p.url, p.exe_path, p.started_at, p.ended_at, p.duration_sec, p.is_active FROM periods p WHERE {where} ORDER BY {sort_col} {sort_dir} LIMIT {limit} OFFSET {offset}",
+    rows_all  = db.execute(
+        f"SELECT p.process_name, p.window_title, p.url, p.exe_path, p.started_at, p.ended_at, p.duration_sec, p.is_active FROM periods p WHERE {where} ORDER BY {sort_col} {sort_dir}",
         p
     ).fetchall()
     db.close()
-    return jsonify({"total": total, "rows": [dict(r) for r in rows]})
+
+    registry, kws = _get_registry_and_kws()
+
+    # Hämta webbläsarhistorik en gång om projektfilter är aktivt
+    # (URL:er lagras ej i periods-tabellen för browsers)
+    browser_history = []  # lista av (visited_at: datetime, url: str)
+    if project_num and _tracker is not None:
+        try:
+            from_dt = datetime.fromisoformat(from_date) if from_date else datetime(2000, 1, 1)
+            to_dt   = datetime.fromisoformat(to_date)   if to_date   else datetime.now()
+            if to_date and len(to_date) <= 10:
+                to_dt = to_dt.replace(hour=23, minute=59, second=59)
+            for b in _tracker.get_browser_urls(from_dt, to_dt):
+                browser_history.append((datetime.fromisoformat(b["visited_at"]), b["url"]))
+        except Exception:
+            pass
+
+    result   = []
+    for r in rows_all:
+        row = dict(r)
+        matched = None
+        for t in [row.get("window_title"), row.get("url"), row.get("exe_path")]:
+            matched = _match_project(t, kws)
+            if matched:
+                break
+        # Om ingen match och det är en webbläsare – sök i historiken för perioden
+        if not matched and row.get("process_name", "").lower() in BROWSER_PROCS and browser_history:
+            p_start = datetime.fromisoformat(row["started_at"])
+            p_end   = datetime.fromisoformat(row["ended_at"])
+            for visited_at, url in browser_history:
+                if p_start <= visited_at <= p_end:
+                    m = _match_project(url, kws)
+                    if m:
+                        matched = m
+                        break
+        row["project_num"]  = matched
+        row["project_name"] = registry.get(matched, "") if matched else ""
+        if project_num and matched != project_num:
+            continue
+        result.append(row)
+
+    total = len(result)
+    paged = result[offset:offset+limit]
+    return jsonify({"total": total, "rows": paged})
 
 
 @app.route("/api/app_titles")
 def api_app_titles():
-    proc      = request.args.get("proc","")
-    from_date = request.args.get("from","")
-    to_date   = request.args.get("to","")
-    active    = request.args.get("active","")
-    df, params = date_filter(from_date, to_date)
+    proc        = request.args.get("proc","")
+    from_date   = request.args.get("from","")
+    to_date     = request.args.get("to","")
+    active      = request.args.get("active","")
+    project_num = request.args.get("project","")
+    df, params  = date_filter(from_date, to_date)
     clauses = [df, "p.process_name = ?"]
     p = list(params) + [proc]
     if active in ("0","1"):
@@ -2148,11 +2610,22 @@ def api_app_titles():
     where = " AND ".join(clauses)
     db = get_db()
     rows = db.execute(
-        f"SELECT p.window_title, MAX(p.url) as url, MAX(p.exe_path) as exe_path, SUM(p.duration_sec) as total_sec, COUNT(*) as cnt FROM periods p WHERE {where} AND p.window_title IS NOT NULL AND p.window_title != '' GROUP BY p.window_title ORDER BY total_sec DESC LIMIT 50",
+        f"SELECT p.window_title, MAX(p.url) as url, MAX(p.exe_path) as exe_path, SUM(p.duration_sec) as total_sec, SUM(CASE WHEN p.is_active=1 THEN p.duration_sec ELSE 0 END) as active_sec, COUNT(*) as cnt FROM periods p WHERE {where} AND p.window_title IS NOT NULL AND p.window_title != '' GROUP BY p.window_title ORDER BY total_sec DESC LIMIT 50",
         p
     ).fetchall()
     db.close()
-    return jsonify([dict(r) for r in rows])
+
+    registry, kws = _get_registry_and_kws()
+    result = []
+    for r in rows:
+        row     = dict(r)
+        matched = _match_row_project(row, kws)
+        row["project_num"]  = matched
+        row["project_name"] = registry.get(matched, "") if matched else ""
+        if project_num and matched != project_num:
+            continue
+        result.append(row)
+    return jsonify(result)
 
 
 @app.route("/api/apps")
@@ -2181,18 +2654,28 @@ def api_gantt():
     if not from_str or not to_str:
         return jsonify([])
 
+    project_filter = request.args.get("project", "").strip()
+
     db = get_db()
     # Hämta alla perioder inom intervallet
     rows = db.execute(
         "SELECT process_name, window_title, url, exe_path, started_at, ended_at, duration_sec, is_active "
-        "FROM periods WHERE started_at >= ? AND ended_at <= ? ORDER BY started_at",
+        "FROM periods WHERE started_at >= ? AND started_at < date(?, '+1 day') ORDER BY started_at",
         (from_str, to_str)
     ).fetchall()
     db.close()
 
+    # Konvertera till dict-lista (behövs för _match_row_project som använder .get())
+    rows = [dict(r) for r in rows]
+
+    # Projektfiltrering
+    if project_filter:
+        _, keywords = _get_registry_and_kws()
+        rows = [r for r in rows if _match_row_project(r, keywords) == project_filter]
+
     # Gruppera per process_name
     from collections import defaultdict
-    procs = defaultdict(lambda: {"periods":[], "titles": defaultdict(lambda: {"periods":[],"is_active":0}), "has_active":0})
+    procs = defaultdict(lambda: {"periods":[], "titles": defaultdict(lambda: {"periods":[],"is_active":0}), "has_active":0, "active_sec":0})
 
     for r in rows:
         pn = r["process_name"]
@@ -2200,6 +2683,7 @@ def api_gantt():
         procs[pn]["periods"].append(period)
         if r["is_active"]:
             procs[pn]["has_active"] = 1
+            procs[pn]["active_sec"] += r["duration_sec"]
         title = r["window_title"] or ""
         if title:
             procs[pn]["titles"][title]["periods"].append(period)
@@ -2224,6 +2708,7 @@ def api_gantt():
             "periods":      data["periods"],
             "titles":       titles,
             "has_active":   data["has_active"],
+            "active_sec":   data["active_sec"],
             "total_sec":    sum(p["duration_sec"] for p in data["periods"]),
         })
     return jsonify(result)
@@ -2735,6 +3220,222 @@ def api_config():
         "backend_ready":  bool(BACKEND_URL),
         "feedback_email": FEEDBACK_EMAIL,
     })
+
+
+_registry_cache: dict = {"registry": None, "kws": None, "mtime": None}
+
+
+def _get_registry_and_kws() -> tuple:
+    """Returnerar (registry, keywords). Läser filen bara om den ändrats sedan senast."""
+    try:
+        mtime = PLAN_CACHE_PATH.stat().st_mtime
+    except FileNotFoundError:
+        return {}, {}
+    c = _registry_cache
+    if c["mtime"] == mtime and c["registry"] is not None:
+        return c["registry"], c["kws"]
+    registry = _build_project_registry()
+    kws      = _project_keywords(registry)
+    c["registry"], c["kws"], c["mtime"] = registry, kws, mtime
+    return registry, kws
+
+
+def _build_project_registry() -> dict:
+    try:
+        cache = json.loads(PLAN_CACHE_PATH.read_text(encoding="utf-8"))
+        if "full_registry" in cache:
+            return cache["full_registry"]
+        registry = {}
+        for row in cache.get("rows", []):
+            m = _PS_CODE_RE.match(row["project"])
+            if m:
+                num  = m.group()
+                registry[num] = row["project"][len(num):].strip(" -–")
+        return registry
+    except Exception:
+        return {}
+
+
+def _project_keywords(registry: dict) -> dict:
+    result = {}
+    for num, name in registry.items():
+        words = [w.lower() for w in re.split(r'[\s,&/:;\-]+', name) if len(w) > 3]
+        words.sort(key=len, reverse=True)
+        result[num] = words[:5]
+    return result
+
+
+def _match_project(text: str, keywords: dict) -> str | None:
+    """Direktmatchning på P/S+5 siffror, annars nyckelordsmatchning (minst 2 av N)."""
+    if not text:
+        return None
+    m = _PS_CODE_RE.search(text)
+    if m:
+        return m.group()
+    text_lower = text.lower()
+    for num, kws in keywords.items():
+        if not kws:
+            continue
+        if sum(1 for kw in kws if kw in text_lower) >= min(len(kws), 2):
+            return num
+    return None
+
+
+def _match_row_project(row, kws: dict) -> str | None:
+    """Matchar en databasrad mot projektnummer via window_title, url och exe_path."""
+    return (_match_project(row.get("window_title"), kws) or
+            _match_project(row.get("url"), kws) or
+            _match_project(row.get("exe_path"), kws))
+
+
+@app.route("/api/project-registry")
+def api_project_registry():
+    registry, _ = _get_registry_and_kws()
+    return jsonify({"ok": True, "projects": [
+        {"number": num, "name": name} for num, name in sorted(registry.items())
+    ]})
+
+
+@app.route("/api/project-summary")
+def api_project_summary():
+    project   = request.args.get("project", "").strip()
+    from_date = request.args.get("from", "")
+    to_date   = request.args.get("to", "")
+    if not project or not from_date or not to_date:
+        return jsonify({"ok": False}), 400
+
+    registry, kws = _get_registry_and_kws()
+
+    db   = get_db()
+    rows = db.execute(
+        "SELECT window_title, process_name, url, exe_path, duration_sec "
+        "FROM periods WHERE started_at >= ? AND started_at < date(?, '+1 day') AND is_active = 1",
+        (from_date, to_date)
+    ).fetchall()
+    db.close()
+
+    totals = {}
+    for r in rows:
+        matched = (_match_project(r["window_title"], kws) or
+                   _match_project(r["url"], kws) or
+                   _match_project(r["exe_path"], kws))
+        if matched != project:
+            continue
+        title = r["window_title"] or r["process_name"] or "—"
+        totals[title] = totals.get(title, 0) + r["duration_sec"]
+
+    sorted_titles = sorted(totals.items(), key=lambda x: -x[1])
+    total_sec = sum(v for _, v in sorted_titles)
+
+    return jsonify({
+        "ok":           True,
+        "project_num":  project,
+        "project_name": registry.get(project, ""),
+        "total_sec":    total_sec,
+        "top_titles":   [{"title": t, "sec": s} for t, s in sorted_titles[:6]],
+    })
+
+
+@app.route("/api/active-projects")
+def api_active_projects():
+    """Returnerar de projekt som faktiskt hittats i aktivitetsdatan för vald period."""
+    from_date = request.args.get("from", "")
+    to_date   = request.args.get("to", "")
+
+    registry, kws = _get_registry_and_kws()
+
+    if not from_date or not to_date:
+        # Inget datumintervall – returnera alla kända projekt
+        return jsonify({"ok": True, "projects": [
+            {"number": k, "name": v} for k, v in sorted(registry.items())
+        ]})
+
+    db   = get_db()
+    rows = db.execute(
+        "SELECT window_title, url, exe_path FROM periods "
+        "WHERE started_at >= ? AND started_at < date(?, '+1 day')",
+        (from_date, to_date)
+    ).fetchall()
+    db.close()
+
+    found = {}
+    for r in rows:
+        for text in [r["window_title"] or "", r["url"] or "", r["exe_path"] or ""]:
+            if not text:
+                continue
+            # Direkt mönstersökning (P/S + 5 siffror)
+            for m in _PS_CODE_RE.finditer(text):
+                code = m.group()
+                if code not in found:
+                    found[code] = registry.get(code, "")
+            # Nyckelordsmatchning mot planerade projekt
+            matched = _match_project(text, kws)
+            if matched and matched not in found:
+                found[matched] = registry.get(matched, "")
+
+    projects = [{"number": k, "name": v} for k, v in sorted(found.items())]
+    return jsonify({"ok": True, "projects": projects})
+
+
+@app.route("/api/planning-config", methods=["GET", "POST"])
+def api_planning_config():
+    cfg = load_config()
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        cfg["planning_enabled"]  = data.get("enabled", False)
+        cfg["planning_file"]     = data.get("file", "")
+        cfg["planning_resource"] = data.get("resource", "")
+        save_config(cfg)
+        return jsonify({"ok": True})
+    return jsonify({
+        "enabled":  cfg.get("planning_enabled", False),
+        "file":     cfg.get("planning_file", ""),
+        "resource": cfg.get("planning_resource", ""),
+    })
+
+
+@app.route("/api/planning")
+def api_planning():
+    cfg = load_config()
+    if not cfg.get("planning_enabled"):
+        return jsonify({"ok": False, "error": "Resursplanering inte aktiverad"}), 403
+
+    file_path = cfg.get("planning_file", "")
+    resource  = cfg.get("planning_resource", "")
+    if not file_path or not resource:
+        return jsonify({"ok": False, "error": "Sökväg och namn måste konfigureras"}), 400
+
+    from_str = request.args.get("from", "")
+    to_str   = request.args.get("to", "")
+    try:
+        from_date = datetime.fromisoformat(from_str) if from_str else datetime.now() - timedelta(weeks=2)
+        to_date   = datetime.fromisoformat(to_str)   if to_str   else datetime.now() + timedelta(weeks=4)
+        if to_str and len(to_str) <= 10:
+            to_date = to_date.replace(hour=23, minute=59, second=59)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Ogiltigt datumformat"}), 400
+
+    try:
+        if _planner is None:
+            raise ImportError("planner ej tillgänglig")
+        rows         = _planner.read_planning(file_path, resource, from_date, to_date)
+        full_registry = _planner.read_all_projects(file_path)
+        # Spara till cache
+        PLAN_CACHE_PATH.write_text(json.dumps({
+            "rows":          rows,
+            "full_registry": full_registry,
+            "cached_at":     datetime.now().isoformat(),
+            "from":          from_date.isoformat(),
+            "to":            to_date.isoformat(),
+        }, ensure_ascii=False), encoding="utf-8")
+        return jsonify({"ok": True, "rows": rows, "from_cache": False, "cached_at": None})
+    except Exception as e:
+        # Försök med cache om Excel inte är tillgänglig
+        try:
+            cache = json.loads(PLAN_CACHE_PATH.read_text(encoding="utf-8"))
+            return jsonify({"ok": True, "rows": cache["rows"], "from_cache": True, "cached_at": cache["cached_at"]})
+        except Exception:
+            return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/register", methods=["POST"])
