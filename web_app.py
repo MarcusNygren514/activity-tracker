@@ -25,13 +25,18 @@ try:
 except ImportError:
     _planner = None
 
+try:
+    import geotracker as _geotracker
+except ImportError:
+    _geotracker = None
+
 # Projektkodsmönster: P eller S följt av exakt 5 siffror
 _PS_CODE_RE = re.compile(r'[PS]\d{5}')
 
 # Webbläsarprocesser – synkroniserat med tracker.py
 BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
-VERSION         = "v0.13b"
+VERSION         = "v0.14b"
 DB_PATH         = Path.home() / "activity_tracker" / "activity.db"
 CONFIG_PATH     = Path.home() / "activity_tracker" / "app_config.json"
 PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "planning_cache.json"
@@ -616,12 +621,27 @@ a.row-link:hover{opacity:1;text-decoration:underline}
 
     <!-- Resursplanering -->
     <div id="planning-section" style="display:none;margin-top:32px">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer" onclick="toggleSection('planning')">
+        <span id="planning-arrow" style="font-size:11px;color:var(--muted);transition:transform .2s">▶</span>
         <h3 style="margin:0;font-size:15px">Resursplanering</h3>
-        <button onclick="loadPlanning()" class="btn-secondary" style="padding:5px 14px;font-size:12px">⟳ Ladda aktiviteter</button>
+        <button onclick="event.stopPropagation();loadPlanning()" class="btn-secondary" style="padding:5px 14px;font-size:12px">⟳ Ladda aktiviteter</button>
       </div>
-      <div id="planning-last-loaded" style="font-size:11px;color:var(--muted);margin-bottom:12px"></div>
-      <div id="planning-gantt"></div>
+      <div id="planning-body" style="display:none">
+        <div id="planning-last-loaded" style="font-size:11px;color:var(--muted);margin-bottom:12px"></div>
+        <div id="planning-gantt"></div>
+      </div>
+    </div>
+
+    <!-- Resor -->
+    <div id="geo-section" style="display:none;margin-top:32px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer" onclick="toggleSection('geo')">
+        <span id="geo-arrow" style="font-size:11px;color:var(--muted);transition:transform .2s">▶</span>
+        <h3 style="margin:0;font-size:15px">Resor</h3>
+        <span id="geo-section-status" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+      <div id="geo-body" style="display:none">
+        <div id="geo-locations"></div>
+      </div>
     </div>
   </div>
 
@@ -772,6 +792,40 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         </div>
         <button onclick="savePlanSettings()" class="btn-primary" style="padding:8px 20px">Spara</button>
         <span id="plan-status" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px">Platsloggning</h3>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 6px">
+        Loggar din position med jämna mellanrum och visar en reslinje i Tidslinje-fliken.
+        Kan hjälpa till med registrering av resor och utgifter.
+      </p>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 20px;padding:10px 14px;
+        background:var(--bg);border:1px solid var(--border);border-radius:var(--r)">
+        🔒 Platser lagras bara lokalt på din dator. Inget skickas någonstans.
+        Ny position loggas bara när du förflyttat dig mer än ~150 meter.
+      </p>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <label class="toggle-label">
+          <input type="checkbox" id="geo-enabled" onchange="saveGeoSettings()">
+          <span>Aktivera platsloggning</span>
+        </label>
+        <span id="geo-status-dot" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div id="geo-fields">
+        <div style="margin-bottom:14px">
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Loggningsintervall</label>
+          <select id="geo-interval" onchange="saveGeoSettings()"
+            style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+            padding:8px 12px;color:var(--text);font-size:13px">
+            <option value="1">Var 1:e minut</option>
+            <option value="5" selected>Var 5:e minut</option>
+            <option value="15">Var 15:e minut</option>
+            <option value="30">Var 30:e minut</option>
+          </select>
+        </div>
+        <span id="geo-save-status" style="font-size:12px;color:var(--muted)"></span>
       </div>
     </div>
   </div>
@@ -1016,6 +1070,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadDashboard();
   initRegistration();
   initPlanSettings();
+  initGeoSettings();
   initProjectDropdowns();
 });
 
@@ -1594,7 +1649,88 @@ async function savePlanSettings() {
 
 async function autoLoadPlanning() {
   const cfg = await fetch('/api/planning-config').then(r => r.json());
+  document.getElementById('planning-section').style.display = cfg.enabled ? '' : 'none';
   if (cfg.enabled) loadPlanning();
+
+  const geoCfg = await fetch('/api/geo-config').then(r => r.json());
+  document.getElementById('geo-section').style.display = geoCfg.enabled ? '' : 'none';
+  if (geoCfg.enabled) loadGeoLocations();
+}
+
+function toggleSection(name) {
+  const body  = document.getElementById(name + '-body');
+  const arrow = document.getElementById(name + '-arrow');
+  const open  = body.style.display === 'none';
+  body.style.display  = open ? '' : 'none';
+  arrow.style.transform = open ? 'rotate(90deg)' : '';
+}
+
+async function loadGeoLocations() {
+  const from = document.getElementById('gantt-from').value?.slice(0, 10);
+  const to   = document.getElementById('gantt-to').value?.slice(0, 10);
+  const el   = document.getElementById('geo-locations');
+  const status = document.getElementById('geo-section-status');
+  el.textContent = 'Laddar…';
+
+  const url = (from && to)
+    ? `/api/geo-locations?from=${from}&to=${to}`
+    : '/api/geo-locations';
+  const d = await fetch(url).then(r => r.json()).catch(() => null);
+
+  if (!d?.ok || !d.locations.length) {
+    el.textContent = 'Inga loggade platser för perioden.';
+    status.textContent = '';
+    return;
+  }
+
+  status.textContent = `${d.locations.length} platser`;
+
+  const rows = d.locations.map((loc, i) => {
+    const next   = d.locations[i + 1];
+    const stayed = next
+      ? fmtDur(Math.round((new Date(next.logged_at) - new Date(loc.logged_at)) / 1000))
+      : '–';
+    const t = new Date(loc.logged_at);
+    const time = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
+    return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap">${time}</span>
+      <span style="flex:1;font-size:13px">${loc.address || '(' + loc.latitude.toFixed(4) + ', ' + loc.longitude.toFixed(4) + ')'}</span>
+      <span style="font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap" title="Tid till nästa position">${stayed}</span>
+      <span style="font-size:10px;color:var(--muted);white-space:nowrap">±${Math.round(loc.accuracy_m)}m</span>
+    </div>`;
+  });
+
+  el.innerHTML = `<div style="margin-top:8px">${rows.join('')}</div>`;
+}
+
+// ── Platsloggning ──────────────────────────────────────────────
+
+async function initGeoSettings() {
+  const cfg = await fetch('/api/geo-config').then(r => r.json());
+  document.getElementById('geo-enabled').checked = cfg.enabled;
+  document.getElementById('geo-interval').value  = cfg.interval || 5;
+  _updateGeoStatusDot(cfg.enabled);
+}
+
+async function saveGeoSettings() {
+  const enabled  = document.getElementById('geo-enabled').checked;
+  const interval = parseInt(document.getElementById('geo-interval').value);
+  const status   = document.getElementById('geo-save-status');
+  await fetch('/api/geo-config', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({enabled, interval}),
+  });
+  status.textContent = 'Sparat ✓';
+  setTimeout(() => status.textContent = '', 2000);
+  _updateGeoStatusDot(enabled);
+}
+
+function _updateGeoStatusDot(enabled) {
+  const dot = document.getElementById('geo-status-dot');
+  if (!dot) return;
+  dot.textContent = enabled ? '● Aktiv' : '○ Inaktiv';
+  dot.style.color = enabled ? 'var(--green)' : 'var(--muted)';
 }
 
 function isoWeek(date) {
@@ -1757,6 +1893,7 @@ async function loadGantt() {
   drawGantt();
   refreshProjectDropdown('gantt-project', from, to);
   updateProjectSummary('gantt-proj-summary', project, from, to);
+  if (document.getElementById('geo-section')?.style.display !== 'none') loadGeoLocations();
 }
 
 
@@ -2040,9 +2177,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (found) {
       tip.style.display = 'block';
-      tip.style.left = (e.clientX + 14) + 'px';
+      tip.innerText = found;
+      const tipW = tip.offsetWidth || 300;
+      const overflowsRight = (e.clientX + 14 + tipW) > window.innerWidth;
+      tip.style.left = overflowsRight ? (e.clientX - tipW - 8) + 'px' : (e.clientX + 14) + 'px';
       tip.style.top  = (e.clientY + 14) + 'px';
-      tip.innerText  = found;
     } else {
       tip.style.display = 'none';
     }
@@ -3021,6 +3160,61 @@ def build_ai_context(db):
             else:
                 lines.append(f"    {fname} ({proc_min}min)")
 
+    # Platser (senaste 14 dagarna)
+    try:
+        loc_rows = db.execute("""
+            SELECT date(logged_at) as day, logged_at, address
+            FROM locations
+            WHERE date(logged_at) >= ?
+            ORDER BY logged_at
+        """, (two_weeks_ago,)).fetchall()
+
+        if loc_rows:
+            from collections import defaultdict as _dd
+            locs_by_day = _dd(list)
+            for r in loc_rows:
+                if r["address"]:
+                    locs_by_day[r["day"]].append(
+                        (r["logged_at"][11:16], r["address"])  # HH:MM + adress
+                    )
+
+            lines.append("PLATSER (ur platsloggning):")
+            for day in sorted(locs_by_day.keys(), reverse=True):
+                entries = locs_by_day[day]
+                # Slå ihop på varandra följande identiska adresser
+                merged = [entries[0]]
+                for e in entries[1:]:
+                    if e[1] != merged[-1][1]:
+                        merged.append(e)
+                d_obj = datetime.strptime(day, "%Y-%m-%d")
+                label = " <- IDAG" if day == today_str else ""
+                lines.append(f"  {day} ({DAYS_SV[d_obj.weekday()]}){label}:")
+                for time, addr in merged:
+                    lines.append(f"    {time}  {addr}")
+            lines.append("")
+    except Exception:
+        pass  # locations-tabellen kanske inte finns ännu
+
+    # Resursplanering (planerade aktiviteter denna och förra veckan)
+    try:
+        cfg = load_config()
+        if cfg.get("planning_enabled") and _planner:
+            cache_path = PLAN_CACHE_PATH
+            if cache_path.exists():
+                cache = json.loads(cache_path.read_text(encoding="utf-8"))
+                plan_rows = cache.get("rows", [])
+                iso = today.isocalendar()
+                cur_week = f"V{str(iso[0] % 100).zfill(2)}{str(iso[1]).zfill(2)}"
+                # Filtrera på innevarande vecka
+                relevant = [r for r in plan_rows if r.get("week") == cur_week]
+                if relevant:
+                    lines.append("RESURSPLANERING (innevarande vecka):")
+                    for r in relevant:
+                        lines.append(f"  {r['week']}  {r['project']}  {r['activity']}  {r['hours']}h")
+                    lines.append("")
+    except Exception:
+        pass
+
     return "\n".join(lines)
 
 
@@ -3377,6 +3571,54 @@ def api_active_projects():
     return jsonify({"ok": True, "projects": projects})
 
 
+@app.route("/api/geo-config", methods=["GET", "POST"])
+def api_geo_config():
+    cfg = load_config()
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        cfg["geo_enabled"]  = data.get("enabled", False)
+        cfg["geo_interval"] = int(data.get("interval", 5))
+        save_config(cfg)
+        # Starta/stoppa geotrackern direkt
+        if _geotracker:
+            try:
+                if cfg["geo_enabled"]:
+                    _geotracker.start(cfg["geo_interval"])
+                else:
+                    _geotracker.stop()
+            except Exception as e:
+                return jsonify({"ok": True, "warning": str(e)})
+        return jsonify({"ok": True})
+    return jsonify({
+        "enabled":  cfg.get("geo_enabled", False),
+        "interval": cfg.get("geo_interval", 5),
+    })
+
+
+@app.route("/api/geo-locations")
+def api_geo_locations():
+    from_date = request.args.get("from", "")
+    to_date   = request.args.get("to", "")
+    db = get_db()
+    try:
+        if from_date and to_date:
+            rows = db.execute(
+                "SELECT logged_at, latitude, longitude, accuracy_m, address "
+                "FROM locations WHERE logged_at >= ? AND logged_at < date(?, '+1 day') "
+                "ORDER BY logged_at",
+                (from_date, to_date)
+            ).fetchall()
+        else:
+            rows = db.execute(
+                "SELECT logged_at, latitude, longitude, accuracy_m, address "
+                "FROM locations ORDER BY logged_at DESC LIMIT 100"
+            ).fetchall()
+    except Exception:
+        rows = []
+    db.close()
+    return jsonify({"ok": True, "locations": [dict(r) for r in rows]})
+
+
 @app.route("/api/planning-config", methods=["GET", "POST"])
 def api_planning_config():
     cfg = load_config()
@@ -3517,6 +3759,11 @@ def _wake_backend():
 def run(port=5757):
     print(f"[Activity Tracker] Webb-gränssnitt: http://localhost:{port}")
     threading.Thread(target=_wake_backend, daemon=True, name="backend-wake").start()
+    # Starta geotracker om den var aktiverad
+    if _geotracker:
+        cfg = load_config()
+        if cfg.get("geo_enabled"):
+            _geotracker.start(cfg.get("geo_interval", 5))
     app.run(host="127.0.0.1", port=port, debug=False, use_reloader=False)
 
 

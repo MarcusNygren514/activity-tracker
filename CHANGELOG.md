@@ -1,6 +1,18 @@
 # Ändringslogg – Activity Tracker
 
-## v0.13b (ej släppt)
+## v0.14b (ej släppt)
+- Valfri platsloggning (geotracking) via Windows Location API
+- Adresser hämtas via Nominatim/OpenStreetMap – inget skickas till externa tjänster
+- Loggar bara vid förflyttning > 150m – sparar resurser och batteri
+- Konfigurerbart loggningsintervall (1 / 5 / 15 / 30 min)
+- På/av-toggle i Inställningar med tydlig integritetsinformation
+- Resor-sektion i Tidslinje-fliken (kollapsbar) med tid, adress och noggrannhet
+- Resursplanering i Tidslinje gjord kollapsbar
+- Maj-Britt får tillgång till platsdata och resursplanering i sina svar
+- Uppdatera-knappen placerad direkt efter datumfälten i Dashboard och Program
+- Buggfix: Uppdatera-knappen låg fel i Program-fliken
+
+## v0.13b (2026-04-12)
 - Resursplanering: ny Gantt-vy i Tidslinje-fliken
 - Inställningssida tillagd (resursplanering opt-in)
 - Veckoformat visas som "V 15" istället för "V2615"
