@@ -36,7 +36,7 @@ _PS_CODE_RE = re.compile(r'[PS]\d{5}')
 # Webbläsarprocesser – synkroniserat med tracker.py
 BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
-VERSION         = "v0.14b"
+VERSION         = "v0.15b"
 DB_PATH         = Path.home() / "activity_tracker" / "activity.db"
 CONFIG_PATH     = Path.home() / "activity_tracker" / "app_config.json"
 PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "planning_cache.json"
@@ -96,17 +96,17 @@ HTML = r"""<!DOCTYPE html>
   --grid-color: rgba(0,229,255,.03);
 }
 
-/* ── Light theme ── */
+/* ── Light theme (Oaks warm) ── */
 [data-theme="light"] {
-  --bg:      #f4f5f7;
-  --surface: #ffffff;
-  --border:  #dde1e9;
-  --accent:  #404E4F;
-  --accent2: #ff4d6d;
-  --green:   #2e9e6b;
-  --muted:   #6b7280;
-  --text:    #1a1f2e;
-  --grid-color: rgba(64,78,79,.04);
+  --bg:      #F5EFE0;
+  --surface: #FBF8F0;
+  --border:  #DDD3BE;
+  --accent:  #9A7400;
+  --accent2: #C0392B;
+  --green:   #4A7C59;
+  --muted:   #7A6F5C;
+  --text:    #2C3535;
+  --grid-color: rgba(154,116,0,.05);
 }
 
 /* ── Oaks theme ── */
@@ -232,10 +232,10 @@ a.row-link:hover{opacity:1;text-decoration:underline}
 .has-tooltip{position:relative;cursor:default}
 .has-tooltip .tip{
   display:none;position:fixed;z-index:1000;
-  background:#1a1f2e;border:1px solid var(--border);border-radius:6px;
+  background:var(--surface);border:1px solid var(--border);border-radius:6px;
   padding:8px 12px;font-size:11px;font-family:var(--mono);
   color:var(--text);white-space:nowrap;max-width:600px;overflow:hidden;text-overflow:ellipsis;
-  box-shadow:0 4px 20px rgba(0,0,0,.4);pointer-events:none;
+  box-shadow:0 4px 20px rgba(0,0,0,.2);pointer-events:none;
 }
 .has-tooltip:hover .tip{display:block}
 
@@ -378,7 +378,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
 <div id="sidebar-toggle" onclick="toggleSidebar()">◀</div>
 
 <!-- Gantt canvas tooltip -->
-<div id="gantt-tip" style="display:none;position:fixed;z-index:999;background:#1a1f2e;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;font-family:var(--mono);color:var(--text);pointer-events:none;max-width:400px;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.5)"></div>
+<div id="gantt-tip" style="display:none;position:fixed;z-index:999;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:11px;font-family:var(--mono);color:var(--text);pointer-events:none;max-width:400px;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.2)"></div>
 
 <!-- Theme switcher -->
 <div id="theme-switcher" style="position:fixed;top:16px;right:20px;z-index:200;display:flex;gap:6px;align-items:center">
@@ -529,7 +529,6 @@ a.row-link:hover{opacity:1;text-decoration:underline}
       <select id="apps-project" onchange="loadApps()" title="Filtrera på projekt">
         <option value="">Alla projekt</option>
       </select>
-      <div class="proj-summary" id="apps-proj-summary" style="margin-top:16px;margin-bottom:0"></div>
       <div class="prog-filter-btn">
         <button class="btn btn-ghost" onclick="openProgFilter('apps')">⊞ Program<span id="prog-filter-count-apps"></span></button>
         <div class="prog-filter-panel" id="prog-filter-apps" style="display:none">
@@ -544,6 +543,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         </div>
       </div>
     </div>
+    <div class="proj-summary" id="apps-proj-summary"></div>
     <div class="table-wrap">
       <table>
         <thead><tr>
@@ -632,11 +632,11 @@ a.row-link:hover{opacity:1;text-decoration:underline}
       </div>
     </div>
 
-    <!-- Resor -->
+    <!-- Besökta platser -->
     <div id="geo-section" style="display:none;margin-top:32px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer" onclick="toggleSection('geo')">
         <span id="geo-arrow" style="font-size:11px;color:var(--muted);transition:transform .2s">▶</span>
-        <h3 style="margin:0;font-size:15px">Resor</h3>
+        <h3 style="margin:0;font-size:15px">Besökta platser</h3>
         <span id="geo-section-status" style="font-size:11px;color:var(--muted)"></span>
       </div>
       <div id="geo-body" style="display:none">
@@ -979,6 +979,7 @@ function showPage(el) {
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('page-'+el.dataset.page).classList.add('active');
+  localStorage.setItem('at-page', el.dataset.page);
   if (liveInterval) { clearInterval(liveInterval); liveInterval=null; }
   if(el.dataset.page==='dashboard') loadDashboard();
   if(el.dataset.page==='live')      { loadLive(); liveInterval=setInterval(loadLive,5000); }
@@ -1067,7 +1068,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   initGanttDates();
   FILTER_VIEWS.forEach(updateProgFilterBadge);
-  loadDashboard();
+  // Återställ senast besökta sida (annars dashboard)
+  const savedPage = localStorage.getItem('at-page') || 'dashboard';
+  const savedNav = document.querySelector(`.nav-item[data-page="${savedPage}"]`);
+  if (savedNav) showPage(savedNav); else loadDashboard();
   initRegistration();
   initPlanSettings();
   initGeoSettings();
@@ -1694,7 +1698,13 @@ async function loadGeoLocations() {
     const time = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
     return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid var(--border)">
       <span style="font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap">${time}</span>
-      <span style="flex:1;font-size:13px">${loc.address || '(' + loc.latitude.toFixed(4) + ', ' + loc.longitude.toFixed(4) + ')'}</span>
+      <span style="flex:1;font-size:13px">${(() => {
+        if (!loc.address) return '(' + loc.latitude.toFixed(4) + ', ' + loc.longitude.toFixed(4) + ')';
+        const parts = loc.address.split(',');
+        const postcode = parts.length > 1 ? parts.pop().trim() : null;
+        const main = parts.join(',').trim();
+        return main + (postcode ? `<span style="font-size:11px;color:var(--muted);margin-left:5px">${postcode}</span>` : '');
+      })()}</span>
       <span style="font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap" title="Tid till nästa position">${stayed}</span>
       <span style="font-size:10px;color:var(--muted);white-space:nowrap">±${Math.round(loc.accuracy_m)}m</span>
     </div>`;
@@ -1835,11 +1845,16 @@ async function loadPlanning() {
   const lastLoaded = document.getElementById('planning-last-loaded');
   if (!d.ok) { gantt.textContent = d.error || 'Kunde inte ladda planering'; return; }
 
-  const now2 = new Date();
-  const cacheNote = d.from_cache
-    ? ` &nbsp;<span style="color:var(--muted)">(från cache – ${d.cached_at ? d.cached_at.slice(0,16).replace('T','&nbsp;&nbsp;') : ''})</span>`
+  const loadedAt = d.from_cache
+    ? (d.cached_at ? new Date(d.cached_at) : null)
+    : new Date();
+  const sourceNote = d.from_cache
+    ? `<span style="color:var(--muted)"> (från cache)</span>`
     : '';
-  lastLoaded.innerHTML = `Senast laddad: ${now2.toLocaleDateString('sv-SE')} &nbsp;&nbsp; ${String(now2.getHours()).padStart(2,'0')}:${String(now2.getMinutes()).padStart(2,'0')}${cacheNote}`;
+  const timeStr = loadedAt
+    ? `${loadedAt.toLocaleDateString('sv-SE')} &nbsp;&nbsp; ${String(loadedAt.getHours()).padStart(2,'0')}:${String(loadedAt.getMinutes()).padStart(2,'0')}`
+    : '–';
+  lastLoaded.innerHTML = `Hämtad från fil: ${timeStr}${sourceNote}`;
 
   planningData = d.rows;
   renderPlanning(planningData, document.getElementById('gantt-project')?.value || '');

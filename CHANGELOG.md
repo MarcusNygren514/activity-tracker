@@ -1,16 +1,23 @@
 # Ändringslogg – Activity Tracker
 
-## v0.14b (ej släppt)
+## v0.15b (ej släppt)
 - Valfri platsloggning (geotracking) via Windows Location API
 - Adresser hämtas via Nominatim/OpenStreetMap – inget skickas till externa tjänster
 - Loggar bara vid förflyttning > 150m – sparar resurser och batteri
 - Konfigurerbart loggningsintervall (1 / 5 / 15 / 30 min)
 - På/av-toggle i Inställningar med tydlig integritetsinformation
-- Resor-sektion i Tidslinje-fliken (kollapsbar) med tid, adress och noggrannhet
+- Besökta platser-sektion i Tidslinje-fliken (kollapsbar) med tid, adress och noggrannhet
 - Resursplanering i Tidslinje gjord kollapsbar
 - Maj-Britt får tillgång till platsdata och resursplanering i sina svar
 - Uppdatera-knappen placerad direkt efter datumfälten i Dashboard och Program
 - Buggfix: Uppdatera-knappen låg fel i Program-fliken
+- Buggfix: Projektsammanfattningskortet i Program-fliken hamnade inuti filter-raden och visades för litet
+- Buggfix: Tooltippar hade hårdkodad mörk bakgrund som inte fungerade i ljustemat
+- Ljustemat omgjort med Oaks-palett: varm cream-bakgrund, mörkgrön text och guld-accent
+- Automatisk layout-validering via pre-commit hook (check_layout.py)
+- Buggfix: Tid räknades på program även när skärmsläckaren eller låsskärmen var aktiv
+- Webbläsaren minns vilken flik som var öppen vid omladdning
+- run_version.bat: versionsväxlare för att köra äldre versioner (t.ex. för att matcha betatestare)
 
 ## v0.13b (2026-04-12)
 - Resursplanering: ny Gantt-vy i Tidslinje-fliken

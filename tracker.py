@@ -55,6 +55,13 @@ def stop():
 
 # ── Windows-API helpers ────────────────────────────────────────
 
+def _is_screensaver_running() -> bool:
+    """Returnerar True om skärmsläckaren (eller låsskärmen) är aktiv."""
+    running = ctypes.wintypes.BOOL(False)
+    user32.SystemParametersInfoW(0x0072, 0, ctypes.byref(running), 0)
+    return bool(running.value)
+
+
 def _exe_for_pid(pid):
     handle = kernel32.OpenProcess(0x0410, False, pid)
     buf = ctypes.create_unicode_buffer(1024)
@@ -373,6 +380,7 @@ def run():
     open_url    = {}
     active_proc = None
     last_tick   = datetime.now()
+    screen_was_inactive = False
 
     try:
         while True:
@@ -390,7 +398,29 @@ def run():
                 open_since.clear(); open_title.clear(); open_exe.clear(); open_url.clear()
                 end_session(conn, session_id)
                 session_id = start_session(conn)
+                screen_was_inactive = False
             last_tick = now
+
+            # Detektera skärmsläckare / låsskärm
+            screen_inactive = _is_screensaver_running()
+            if screen_inactive and not screen_was_inactive:
+                logging.info("Screensaver/lock detected – flushing periods.")
+                for proc in list(open_since.keys()):
+                    flush_period(conn, session_id, proc,
+                                 open_title[proc], open_exe[proc], open_url[proc],
+                                 open_since[proc], now, is_active=(proc == active_proc))
+                open_since.clear(); open_title.clear(); open_exe.clear(); open_url.clear()
+                end_session(conn, session_id)
+                session_id = start_session(conn)
+            if not screen_inactive and screen_was_inactive:
+                logging.info("Screensaver/lock ended – resuming tracking.")
+            screen_was_inactive = screen_inactive
+
+            # Hoppa över resten av loopen medan skärmen är inaktiv
+            if screen_inactive:
+                if _stop_event.wait(POLL_INTERVAL):
+                    break
+                continue
 
             try:
                 active_name, active_title, active_exe, active_pid = get_active_window()
