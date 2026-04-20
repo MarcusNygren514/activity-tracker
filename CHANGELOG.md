@@ -1,6 +1,18 @@
 # Ändringslogg – Activity Tracker
 
-## v0.15b (ej släppt)
+## v0.16b (2026-04-20)
+- Datumavgränsare per dag i Besökta platser-sektionen
+- Webbläsaren minns vilken flik som var öppen vid omladdning
+- Webbläsarens valda datum, filter och sökfält sparas och återställs per vy
+- Platser med GPS-felmarginal > 300m filtreras bort i Besökta platser (±50km visas inte längre)
+- Firefox-historik stöds nu (moz_historyvisits, alla profiler)
+- Tid räknas inte längre när skärmsläckaren eller låsskärmen är aktiv
+- Resursplanering ersatt av gruppvy: planeringen visas nu för hela teamet (GRUPP-kolumnen)
+- Inloggad användare ingår i gruppsummeringen
+- Varje gruppmedlem har en summerad rubrikrad som kan expanderas för detaljvy
+- Resursplanering laddas inte om automatiskt vid varje tabbyte
+
+## v0.15b (2026-04-15)
 - Valfri platsloggning (geotracking) via Windows Location API
 - Adresser hämtas via Nominatim/OpenStreetMap – inget skickas till externa tjänster
 - Loggar bara vid förflyttning > 150m – sparar resurser och batteri

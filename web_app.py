@@ -36,7 +36,7 @@ _PS_CODE_RE = re.compile(r'[PS]\d{5}')
 # Webbläsarprocesser – synkroniserat med tracker.py
 BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
-VERSION         = "v0.15b"
+VERSION         = "v0.16b"
 DB_PATH         = Path.home() / "activity_tracker" / "activity.db"
 CONFIG_PATH     = Path.home() / "activity_tracker" / "app_config.json"
 PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "planning_cache.json"
@@ -584,7 +584,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         <button class="btn-quick" id="gantt-week-btn" onclick="setQuick('gantt-from','gantt-to','week',loadGantt,true)">V?</button>
         <button class="btn-quick" onclick="stepWeek('gantt',1,loadGantt,true)">→</button>
       </div>
-      <select id="gantt-project" onchange="loadGantt(); if(planningData) renderPlanning(planningData, this.value);" title="Filtrera på projekt">
+      <select id="gantt-project" onchange="loadGantt(); if(teamPlanningData) renderTeamPlanning(teamPlanningData, this.value);" title="Filtrera på projekt">
         <option value="">Alla projekt</option>
       </select>
       <div class="prog-filter-btn">
@@ -619,16 +619,15 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     </div>
     <div id="gantt-detail" style="margin-top:16px"></div>
 
-    <!-- Resursplanering -->
-    <div id="planning-section" style="display:none;margin-top:32px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer" onclick="toggleSection('planning')">
-        <span id="planning-arrow" style="font-size:11px;color:var(--muted);transition:transform .2s">▶</span>
-        <h3 style="margin:0;font-size:15px">Resursplanering</h3>
-        <button onclick="event.stopPropagation();loadPlanning()" class="btn-secondary" style="padding:5px 14px;font-size:12px">⟳ Ladda aktiviteter</button>
+    <!-- Teamplanering -->
+    <div id="team-section" style="display:none;margin-top:32px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer" onclick="toggleSection('team')">
+        <span id="team-arrow" style="font-size:11px;color:var(--muted);transition:transform .2s">▶</span>
+        <h3 id="team-section-title" style="margin:0;font-size:15px">Teamplanering</h3>
+        <button onclick="event.stopPropagation();loadTeamPlanning()" class="btn-secondary" style="padding:5px 14px;font-size:12px">⟳ Ladda</button>
       </div>
-      <div id="planning-body" style="display:none">
-        <div id="planning-last-loaded" style="font-size:11px;color:var(--muted);margin-bottom:12px"></div>
-        <div id="planning-gantt"></div>
+      <div id="team-body" style="display:none">
+        <div id="team-gantt"></div>
       </div>
     </div>
 
@@ -922,11 +921,15 @@ function setQuick(fromId, toId, preset, loadFn, isDatetime) {
   if (preset === 'today') {
     document.getElementById(fromId).value = isDatetime ? today()+'T00:00' : today();
     document.getElementById(toId).value   = isDatetime ? today()+'T23:59' : today();
+    savePref(fromId, document.getElementById(fromId).value);
+    savePref(toId,   document.getElementById(toId).value);
     loadFn();
   } else if (preset === 'yesterday') {
     const y = daysAgo(1);
     document.getElementById(fromId).value = isDatetime ? y+'T00:00' : y;
     document.getElementById(toId).value   = isDatetime ? y+'T23:59' : y;
+    savePref(fromId, document.getElementById(fromId).value);
+    savePref(toId,   document.getElementById(toId).value);
     loadFn();
   } else if (preset === 'week') {
     weekOffset[section] = 0;
@@ -961,6 +964,8 @@ function applyWeek(section, offset, loadFn, isDatetime) {
   const toId   = section + '-to';
   document.getElementById(fromId).value = isDatetime ? fmt(mon)+'T00:00' : fmt(mon);
   document.getElementById(toId).value   = isDatetime ? fmt(sun)+'T23:59' : fmt(sun);
+  savePref(fromId, document.getElementById(fromId).value);
+  savePref(toId,   document.getElementById(toId).value);
 
   const wn = weekNumber(mon);
   const btn = document.getElementById(section + '-week-btn');
@@ -989,6 +994,10 @@ function showPage(el) {
   if(el.dataset.page==='gantt')     { loadGantt(); autoLoadPlanning(); }
   if(el.dataset.page==='ai')        loadAiSettings();
 }
+
+// ── Inställningspersistens ─────────────────────────────────────
+function savePref(k, v) { try { localStorage.setItem('at-pref-' + k, v); } catch(e) {} }
+function loadPref(k)    { return localStorage.getItem('at-pref-' + k); }
 
 // ── Temabyte ───────────────────────────────────────────────────
 function setTheme(theme) {
@@ -1067,6 +1076,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const el = document.getElementById(id); if(el) el.textContent = wl;
   });
   initGanttDates();
+  // Återställ sparade vyinställningar (override defaults ovan)
+  ['dash-from','dash-to','per-from','per-to','per-search','per-active','per-project',
+   'apps-from','apps-to','apps-active','apps-project','gantt-from','gantt-to','gantt-project'
+  ].forEach(id => {
+    const v = loadPref(id);
+    const el = document.getElementById(id);
+    if (v !== null && el) el.value = v;
+  });
+  // Spara vid framtida ändringar (dropdowns + sökfält)
+  ['per-active','per-project','apps-active','apps-project','gantt-project'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => savePref(id, el.value));
+  });
+  document.getElementById('per-search')?.addEventListener('input', e => savePref('per-search', e.target.value));
+  // Datumfält: spara även vid manuell redigering
+  ['dash-from','dash-to','per-from','per-to','apps-from','apps-to','gantt-from','gantt-to'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', () => savePref(id, el.value));
+  });
   FILTER_VIEWS.forEach(updateProgFilterBadge);
   // Återställ senast besökta sida (annars dashboard)
   const savedPage = localStorage.getItem('at-page') || 'dashboard';
@@ -1633,7 +1661,6 @@ async function initPlanSettings() {
   document.getElementById('plan-enabled').checked  = cfg.enabled;
   document.getElementById('plan-file').value        = cfg.file;
   document.getElementById('plan-resource').value    = cfg.resource;
-  document.getElementById('planning-section').style.display = cfg.enabled ? '' : 'none';
 }
 
 async function savePlanSettings() {
@@ -1648,13 +1675,12 @@ async function savePlanSettings() {
   });
   status.textContent = 'Sparat ✓';
   setTimeout(() => status.textContent = '', 2000);
-  document.getElementById('planning-section').style.display = enabled ? '' : 'none';
 }
 
 async function autoLoadPlanning() {
   const cfg = await fetch('/api/planning-config').then(r => r.json());
-  document.getElementById('planning-section').style.display = cfg.enabled ? '' : 'none';
-  if (cfg.enabled) loadPlanning();
+  document.getElementById('team-section').style.display = cfg.enabled ? '' : 'none';
+  if (cfg.enabled) { loadPlanning(); if (!teamPlanningData) loadTeamPlanning(); }
 
   const geoCfg = await fetch('/api/geo-config').then(r => r.json());
   document.getElementById('geo-section').style.display = geoCfg.enabled ? '' : 'none';
@@ -1687,16 +1713,31 @@ async function loadGeoLocations() {
     return;
   }
 
-  status.textContent = `${d.locations.length} platser`;
+  const MAX_ACCURACY_M = 300;
+  const locations = d.locations.filter(l => l.accuracy_m <= MAX_ACCURACY_M);
+  const filtered  = d.locations.length - locations.length;
+  status.textContent = `${locations.length} platser${filtered ? ` (${filtered} filtrerade)` : ''}`;
 
-  const rows = d.locations.map((loc, i) => {
-    const next   = d.locations[i + 1];
+  const rows = [];
+  let lastDay = null;
+  const dayNames = ['sön','mån','tis','ons','tor','fre','lör'];
+
+  locations.forEach((loc, i) => {
+    const next   = locations[i + 1];
     const stayed = next
       ? fmtDur(Math.round((new Date(next.logged_at) - new Date(loc.logged_at)) / 1000))
       : '–';
     const t = new Date(loc.logged_at);
+    const dayKey = t.toDateString();
     const time = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
-    return `<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid var(--border)">
+
+    if (dayKey !== lastDay) {
+      lastDay = dayKey;
+      const dayLabel = `${dayNames[t.getDay()]} ${t.getDate()}/${t.getMonth()+1}`;
+      rows.push(`<div style="font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.5px;padding:10px 0 4px">${dayLabel}</div>`);
+    }
+
+    rows.push(`<div style="display:flex;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid var(--border)">
       <span style="font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap">${time}</span>
       <span style="flex:1;font-size:13px">${(() => {
         if (!loc.address) return '(' + loc.latitude.toFixed(4) + ', ' + loc.longitude.toFixed(4) + ')';
@@ -1707,7 +1748,7 @@ async function loadGeoLocations() {
       })()}</span>
       <span style="font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap" title="Tid till nästa position">${stayed}</span>
       <span style="font-size:10px;color:var(--muted);white-space:nowrap">±${Math.round(loc.accuracy_m)}m</span>
-    </div>`;
+    </div>`);
   });
 
   el.innerHTML = `<div style="margin-top:8px">${rows.join('')}</div>`;
@@ -1767,72 +1808,9 @@ function selectedFullWeek() {
   return weekCodeFromDate(f);
 }
 
-function renderPlanning(rows, selectedProject) {
-  const gantt = document.getElementById('planning-gantt');
-  if (!rows || !rows.length) { gantt.textContent = 'Inga planerade aktiviteter för perioden.'; return; }
 
-  const [curWeek, curISOYear] = isoWeek(new Date());
-  const curWeekStr = 'V' + String(curISOYear % 100).padStart(2,'0') + String(curWeek).padStart(2,'0');
-  const weeks = [...new Set(rows.map(r => r.week))].sort();
-  const colW = 70;
-
-  let html = `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;width:100%">
-    <thead><tr>
-      <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);white-space:nowrap;min-width:180px">Projekt / Aktivitet</th>
-      ${weeks.map(w => {
-        const label = 'V ' + parseInt(w.slice(3));
-        const isCur = w === curWeekStr;
-        return `<th style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:center;width:${colW}px;white-space:nowrap;${isCur?'color:var(--accent);font-weight:700':'color:var(--muted);font-weight:400'}">${label}${isCur?' ◀':''}</th>`;
-      }).join('')}
-    </tr>
-    <tr style="background:var(--bg)">
-      <td style="padding:4px 10px;font-size:11px;color:var(--muted);border-bottom:2px solid var(--border)">Totalt</td>
-      ${weeks.map(w => {
-        const visRows = selectedProject ? rows.filter(r => r.project.startsWith(selectedProject)) : rows;
-        const tot = visRows.filter(r => r.week === w).reduce((s, r) => s + r.hours, 0);
-        const isCur = w === curWeekStr;
-        return `<td style="padding:4px 4px;text-align:center;border-bottom:2px solid var(--border);font-family:var(--mono);font-size:12px;${isCur?'color:var(--accent);font-weight:700':'color:var(--muted)'}">${tot>0?tot+'h':''}</td>`;
-      }).join('')}
-    </tr></thead><tbody>`;
-
-  const grouped = {};
-  for (const row of rows) {
-    const key = row.project + '|||' + row.activity;
-    if (!grouped[key]) grouped[key] = {project: row.project, activity: row.activity, weeks: {}};
-    grouped[key].weeks[row.week] = row.hours;
-  }
-
-  for (const [, g] of Object.entries(grouped)) {
-    // Om projekt är valt: dölj rader som inte tillhör det
-    const isMatch = !selectedProject || g.project.startsWith(selectedProject);
-    if (!isMatch) continue;
-    const rowStyle = selectedProject
-      ? 'border-left:3px solid var(--accent);background:rgba(var(--accent-rgb,0,229,255),.06)'
-      : '';
-    html += `<tr style="${rowStyle}">
-      <td style="padding:5px 10px;border-bottom:1px solid var(--border);color:var(--text)">
-        <span style="color:${selectedProject?'var(--accent)':'var(--muted)'};font-size:11px">${g.project}</span><br>
-        <span>${g.activity}</span>
-      </td>
-      ${weeks.map(w => {
-        const h = g.weeks[w] || 0;
-        const isCur = w === curWeekStr;
-        return h
-          ? `<td style="padding:5px 4px;text-align:center;border-bottom:1px solid var(--border)">
-               <div style="background:${isCur?'var(--accent)':'var(--border)'};color:${isCur?'#000':'var(--muted)'};border-radius:4px;padding:2px 6px;font-weight:600;font-family:var(--mono)">${h}h</div></td>`
-          : `<td style="border-bottom:1px solid var(--border)"></td>`;
-      }).join('')}
-    </tr>`;
-  }
-
-  html += '</tbody></table></div>';
-  gantt.innerHTML = html;
-}
 
 async function loadPlanning() {
-  const gantt = document.getElementById('planning-gantt');
-  gantt.textContent = 'Laddar…';
-
   const now  = new Date();
   const mon  = new Date(now); mon.setDate(now.getDate() - ((now.getDay()+6)%7));
   const from = new Date(mon); from.setDate(mon.getDate() - 14);
@@ -1841,27 +1819,121 @@ async function loadPlanning() {
 
   const r = await fetch(`/api/planning?from=${fmt(from)}&to=${fmt(to)}`);
   const d = await r.json();
-
-  const lastLoaded = document.getElementById('planning-last-loaded');
-  if (!d.ok) { gantt.textContent = d.error || 'Kunde inte ladda planering'; return; }
-
-  const loadedAt = d.from_cache
-    ? (d.cached_at ? new Date(d.cached_at) : null)
-    : new Date();
-  const sourceNote = d.from_cache
-    ? `<span style="color:var(--muted)"> (från cache)</span>`
-    : '';
-  const timeStr = loadedAt
-    ? `${loadedAt.toLocaleDateString('sv-SE')} &nbsp;&nbsp; ${String(loadedAt.getHours()).padStart(2,'0')}:${String(loadedAt.getMinutes()).padStart(2,'0')}`
-    : '–';
-  lastLoaded.innerHTML = `Hämtad från fil: ${timeStr}${sourceNote}`;
-
+  if (!d.ok) return;
   planningData = d.rows;
-  renderPlanning(planningData, document.getElementById('gantt-project')?.value || '');
+}
+
+async function loadTeamPlanning() {
+  const gantt = document.getElementById('team-gantt');
+  gantt.textContent = 'Laddar…';
+
+  const now  = new Date();
+  const mon  = new Date(now); mon.setDate(now.getDate() - ((now.getDay()+6)%7));
+  const from = new Date(mon); from.setDate(mon.getDate() - 14);
+  const to   = new Date(mon); to.setDate(mon.getDate() + 62);
+  const fmt  = d => d.toISOString().slice(0,10);
+
+  const r = await fetch(`/api/team-planning?from=${fmt(from)}&to=${fmt(to)}`);
+  const d = await r.json();
+  if (!d.ok) { gantt.textContent = d.error || 'Kunde inte ladda teamplanering'; return; }
+
+  // Sätt dynamisk rubrik med gruppnamn
+  const title = document.getElementById('team-section-title');
+  if (title && d.group) title.textContent = 'Grupp ' + d.group;
+
+  teamPlanningData = d.rows;
+  renderTeamPlanning(teamPlanningData, document.getElementById('gantt-project')?.value || '');
+}
+
+function renderTeamPlanning(rows, selectedProject) {
+  const gantt = document.getElementById('team-gantt');
+  if (!rows || !rows.length) { gantt.textContent = 'Inga planerade aktiviteter för teamet.'; return; }
+
+  const workRows = selectedProject ? rows.filter(r => r.project.startsWith(selectedProject)) : rows;
+  if (selectedProject && !workRows.length) {
+    gantt.textContent = 'Inga planerade aktiviteter för valt projekt.';
+    return;
+  }
+
+  const [curWeek, curISOYear] = isoWeek(new Date());
+  const curWeekStr = 'V' + String(curISOYear % 100).padStart(2,'0') + String(curWeek).padStart(2,'0');
+  const weeks   = [...new Set(workRows.map(r => r.week))].sort();
+  const members = [...new Set(workRows.map(r => r.resource))].sort();
+  const colW    = 70;
+
+  const thWeeks = weeks.map(w => {
+    const isCur = w === curWeekStr;
+    return `<th style="padding:6px 4px;border-bottom:1px solid var(--border);text-align:center;width:${colW}px;white-space:nowrap;${isCur?'color:var(--accent);font-weight:700':'color:var(--muted);font-weight:400'}">V ${parseInt(w.slice(3))}${isCur?' ◀':''}</th>`;
+  }).join('');
+
+  // ── En samlad tabell: summerad rubrikrad per person + kollapsara detaljrader ──
+  let html = `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;width:100%">
+    <thead><tr>
+      <th style="text-align:left;padding:6px 10px;border-bottom:2px solid var(--border);min-width:220px">Person / Projekt</th>
+      ${thWeeks}
+    </tr></thead><tbody>`;
+
+  for (const member of members) {
+    const memberRows = workRows.filter(r => r.resource === member);
+    if (!memberRows.length) continue;
+    const safeId = member.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '');
+
+    // Summerings­rad (klickbar)
+    html += `<tr onclick="toggleTeamMember('${safeId}')" style="cursor:pointer;background:var(--surface)">
+      <td style="padding:7px 10px;border-top:2px solid var(--border);border-bottom:1px solid var(--border);font-weight:700">
+        <span id="team-arrow-${safeId}" style="font-size:10px;color:var(--muted);transition:transform .2s;display:inline-block;margin-right:6px">▶</span>${member}
+      </td>
+      ${weeks.map(w => {
+        const tot = memberRows.filter(r => r.week === w).reduce((s, r) => s + r.hours, 0);
+        const isCur = w === curWeekStr;
+        return tot
+          ? `<td style="padding:7px 4px;text-align:center;border-top:2px solid var(--border);border-bottom:1px solid var(--border)">
+               <div style="background:${isCur?'var(--accent)':'var(--border)'};color:${isCur?'#000':'var(--muted)'};border-radius:4px;padding:2px 6px;font-weight:700;font-family:var(--mono)">${tot}h</div></td>`
+          : `<td style="border-top:2px solid var(--border);border-bottom:1px solid var(--border)"></td>`;
+      }).join('')}
+    </tr>`;
+
+    // Detaljrader (kollapsade)
+    const grouped = {};
+    for (const row of memberRows) {
+      const key = row.project + '|||' + row.activity;
+      if (!grouped[key]) grouped[key] = {project: row.project, activity: row.activity, weeks: {}};
+      grouped[key].weeks[row.week] = row.hours;
+    }
+
+    for (const [, g] of Object.entries(grouped)) {
+      html += `<tr class="team-detail-${safeId}" style="display:none">
+        <td style="padding:5px 10px 5px 28px;border-bottom:1px solid var(--border)">
+          <span style="color:${selectedProject?'var(--accent)':'var(--muted)'};font-size:11px">${g.project}</span><br>
+          <span>${g.activity}</span>
+        </td>
+        ${weeks.map(w => {
+          const h = g.weeks[w] || 0;
+          const isCur = w === curWeekStr;
+          return h
+            ? `<td style="padding:5px 4px;text-align:center;border-bottom:1px solid var(--border)">
+                 <div style="background:${isCur?'var(--accent)':'var(--border)'};color:${isCur?'#000':'var(--muted)'};border-radius:4px;padding:2px 6px;font-weight:600;font-family:var(--mono)">${h}h</div></td>`
+            : `<td style="border-bottom:1px solid var(--border)"></td>`;
+        }).join('')}
+      </tr>`;
+    }
+  }
+
+  html += '</tbody></table></div>';
+  gantt.innerHTML = html;
+}
+
+function toggleTeamMember(safeId) {
+  const rows  = document.querySelectorAll(`.team-detail-${safeId}`);
+  const arrow = document.getElementById('team-arrow-' + safeId);
+  const open  = rows.length && rows[0].style.display === 'none';
+  rows.forEach(r => r.style.display = open ? '' : 'none');
+  arrow.style.transform = open ? 'rotate(90deg)' : '';
 }
 
 // ── Tidslinje (Gantt) ──────────────────────────────────────────
-let planningData  = null;   // cachad planeringsdata för att kunna omrendera vid projektbyte
+let planningData      = null;
+let teamPlanningData  = null;
 let ganttData     = null;
 let ganttOffsetX  = 0;
 let ganttScale    = 1;      // px per sekund
@@ -3691,6 +3763,46 @@ def api_planning():
         try:
             cache = json.loads(PLAN_CACHE_PATH.read_text(encoding="utf-8"))
             return jsonify({"ok": True, "rows": cache["rows"], "from_cache": True, "cached_at": cache["cached_at"]})
+        except Exception:
+            return jsonify({"ok": False, "error": str(e)}), 500
+
+
+TEAM_PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "team_planning_cache.json"
+
+@app.route("/api/team-planning")
+def api_team_planning():
+    cfg = load_config()
+    if not cfg.get("planning_enabled"):
+        return jsonify({"ok": False, "error": "Resursplanering inte aktiverad"}), 403
+
+    file_path = cfg.get("planning_file", "")
+    resource  = cfg.get("planning_resource", "")
+    if not file_path or not resource:
+        return jsonify({"ok": False, "error": "Sökväg och namn måste konfigureras"}), 400
+
+    from_str = request.args.get("from", "")
+    to_str   = request.args.get("to", "")
+    try:
+        from_date = datetime.fromisoformat(from_str) if from_str else datetime.now() - timedelta(weeks=2)
+        to_date   = datetime.fromisoformat(to_str)   if to_str   else datetime.now() + timedelta(weeks=4)
+        if to_str and len(to_str) <= 10:
+            to_date = to_date.replace(hour=23, minute=59, second=59)
+    except ValueError:
+        return jsonify({"ok": False, "error": "Ogiltigt datumformat"}), 400
+
+    try:
+        if _planner is None:
+            raise ImportError("planner ej tillgänglig")
+        data = _planner.read_team_planning(file_path, resource, from_date, to_date)
+        TEAM_PLAN_CACHE_PATH.write_text(json.dumps({
+            **data, "cached_at": datetime.now().isoformat()
+        }, ensure_ascii=False), encoding="utf-8")
+        return jsonify({"ok": True, **data, "from_cache": False, "cached_at": None})
+    except Exception as e:
+        try:
+            cache = json.loads(TEAM_PLAN_CACHE_PATH.read_text(encoding="utf-8"))
+            return jsonify({"ok": True, "group": cache.get("group",""), "rows": cache.get("rows",[]),
+                            "from_cache": True, "cached_at": cache.get("cached_at")})
         except Exception:
             return jsonify({"ok": False, "error": str(e)}), 500
 

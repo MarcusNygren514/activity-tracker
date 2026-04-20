@@ -21,7 +21,7 @@ _PS_CODE_RE = re.compile(r'^([PS]\d{5})')
 
 def _week_to_dates(year_short: int, week: int):
     year   = 2000 + year_short
-    monday = datetime.strptime(f"{year}-W{week:02d}-1", "%Y-W%W-%w")
+    monday = datetime.strptime(f"{year}-W{week:02d}-1", "%G-W%V-%u")
     return monday, monday + timedelta(days=6)
 
 
@@ -46,7 +46,8 @@ def _open_worksheet(file_path: str):
         import openpyxl
         wb = openpyxl.load_workbook(str(tmp), read_only=True, data_only=True, keep_vba=False)
         try:
-            yield wb.active
+            ws = wb["Resursöversikt"] if "Resursöversikt" in wb.sheetnames else wb.active
+            yield ws
         finally:
             wb.close()
     finally:
@@ -149,3 +150,85 @@ def read_planning(file_path: str, resource_name: str, from_date: datetime, to_da
                 })
 
         return results
+
+
+def read_team_planning(file_path: str, resource_name: str, from_date: datetime, to_date: datetime) -> dict:
+    """
+    Läser planeringsfilen och returnerar planering för hela teamet som
+    resource_name tillhör (baserat på GRUPP-kolumnen), exklusive resource_name själv.
+
+    Returnerar:
+    {
+        "group": str,   # teamnamn, t.ex. "Tornado"
+        "rows":  [{"resource": str, "project": str, "activity": str,
+                   "week": str, "week_start": str, "week_end": str, "hours": float}]
+    }
+    """
+    with _open_worksheet(file_path) as ws:
+        headers   = {}
+        week_cols = {}
+
+        for i, cell in enumerate(ws[1]):
+            val = str(cell.value).strip() if cell.value else ""
+            headers[i] = val
+            m = _WEEK_RE.match(val)
+            if m:
+                week_cols[val] = i
+
+        col_project  = next((i for i, v in headers.items() if v == "PROJEKT"),  1)
+        col_activity = next((i for i, v in headers.items() if v == "AKTIVITET"), 2)
+        col_resource = next((i for i, v in headers.items() if v == "RESURS"),    5)
+        col_group    = next((i for i, v in headers.items() if v == "GRUPP"),     4)
+
+        # Hitta gruppen för resource_name
+        resource_lower = resource_name.strip().lower()
+        group_name = ""
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if row[col_resource] and str(row[col_resource]).strip().lower() == resource_lower:
+                group_name = str(row[col_group]).strip() if row[col_group] else ""
+                break
+
+        if not group_name:
+            return {"group": "", "rows": []}
+
+        relevant_weeks = {}
+        for week_name, col_idx in week_cols.items():
+            m = _WEEK_RE.match(week_name)
+            if not m:
+                continue
+            monday, sunday = _week_to_dates(int(m.group(1)), int(m.group(2)))
+            if monday <= to_date and sunday >= from_date:
+                relevant_weeks[week_name] = (col_idx, monday, sunday)
+
+        if not relevant_weeks:
+            return {"group": group_name, "rows": []}
+
+        results = []
+        group_lower = group_name.lower()
+
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            grp = str(row[col_group]).strip() if row[col_group] else ""
+            if grp.lower() != group_lower:
+                continue
+            res = str(row[col_resource]).strip() if row[col_resource] else ""
+            project  = str(row[col_project]).strip()  if row[col_project]  else ""
+            activity = str(row[col_activity]).strip() if row[col_activity] else ""
+
+            if not project or project in ("None", "PROJEKT"):
+                continue
+
+            for week_name, (col_idx, monday, sunday) in relevant_weeks.items():
+                hours = _parse_hours(row[col_idx + 1]) if col_idx + 1 < len(row) else 0.0
+                if hours <= 0:
+                    continue
+                results.append({
+                    "resource":   res,
+                    "project":    project,
+                    "activity":   activity,
+                    "week":       week_name,
+                    "week_start": monday.strftime("%Y-%m-%d"),
+                    "week_end":   sunday.strftime("%Y-%m-%d"),
+                    "hours":      hours,
+                })
+
+        return {"group": group_name, "rows": results}
