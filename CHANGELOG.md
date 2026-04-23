@@ -1,5 +1,11 @@
 # Ändringslogg – Activity Tracker
 
+## v0.17b (2026-04-23)
+- Program-vyn: aktiv/bakgrund-filter uppdaterar listan direkt utan att klicka Uppdatera
+- Tidslinje: klick på en dag i tidsaxeln zoomar till just den dagen (vid flerdagarsvy)
+- Planering: rubriken visar nu "Planering Grupp [namn]"
+- Planering: timmar > 40 per person och vecka markeras i rött
+
 ## v0.16b (2026-04-20)
 - Datumavgränsare per dag i Besökta platser-sektionen
 - Webbläsaren minns vilken flik som var öppen vid omladdning

@@ -36,7 +36,7 @@ _PS_CODE_RE = re.compile(r'[PS]\d{5}')
 # Webbläsarprocesser – synkroniserat med tracker.py
 BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
-VERSION         = "v0.16b"
+VERSION         = "v0.17b"
 DB_PATH         = Path.home() / "activity_tracker" / "activity.db"
 CONFIG_PATH     = Path.home() / "activity_tracker" / "app_config.json"
 PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "planning_cache.json"
@@ -276,6 +276,9 @@ a.row-link:hover{opacity:1;text-decoration:underline}
 .pagination{display:flex;gap:8px;align-items:center;margin-top:16px;justify-content:flex-end}
 .page-info{font-size:12px;color:var(--muted);font-family:var(--mono)}
 
+/* Veckoetiketter bredvid datumfält */
+.wk-hint{font-size:11px;color:var(--muted);font-family:var(--mono);margin-left:3px;white-space:nowrap}
+
 /* Snabbval-knappar */
 .quick-dates{display:flex;gap:6px}
 .btn-quick{padding:5px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);
@@ -393,8 +396,8 @@ a.row-link:hover{opacity:1;text-decoration:underline}
   <div id="page-dashboard" class="page active">
     <h1>Dashboard</h1><p class="subtitle">Aktivitetsöversikt</p>
     <div class="filters sticky-filters">
-      <label>Från</label><input type="date" id="dash-from">
-      <label>Till</label><input type="date" id="dash-to">
+      <label>Från</label><input type="date" id="dash-from"><span class="wk-hint" id="dash-from-wk"></span>
+      <label>Till</label><input type="date" id="dash-to"><span class="wk-hint" id="dash-to-wk"></span>
       <button class="btn btn-primary" onclick="loadDashboard()">Uppdatera</button>
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('dash-from','dash-to','today',loadDashboard)">Idag</button>
@@ -465,8 +468,8 @@ a.row-link:hover{opacity:1;text-decoration:underline}
   <div id="page-periods" class="page">
     <h1>Perioder</h1><p class="subtitle">Loggade aktivitetsperioder</p>
     <div class="filters">
-      <label>Från</label><input type="date" id="per-from">
-      <label>Till</label><input type="date" id="per-to">
+      <label>Från</label><input type="date" id="per-from"><span class="wk-hint" id="per-from-wk"></span>
+      <label>Till</label><input type="date" id="per-to"><span class="wk-hint" id="per-to-wk"></span>
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('per-from','per-to','today',()=>loadPeriods(1))">Idag</button>
         <button class="btn-quick" onclick="setQuick('per-from','per-to','yesterday',()=>loadPeriods(1))">Igår</button>
@@ -511,17 +514,17 @@ a.row-link:hover{opacity:1;text-decoration:underline}
   <div id="page-apps" class="page">
     <h1>Program</h1><p class="subtitle">Total tid per applikation</p>
     <div class="filters">
-      <label>Från</label><input type="date" id="apps-from">
-      <label>Till</label><input type="date" id="apps-to">
+      <label>Från</label><input type="date" id="apps-from"><span class="wk-hint" id="apps-from-wk"></span>
+      <label>Till</label><input type="date" id="apps-to"><span class="wk-hint" id="apps-to-wk"></span>
       <button class="btn btn-primary" onclick="loadApps()">Uppdatera</button>
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('apps-from','apps-to','today',loadApps)">Idag</button>
         <button class="btn-quick" onclick="setQuick('apps-from','apps-to','yesterday',loadApps)">Igår</button>
-        <button class="btn-quick" onclick="stepWeek('apps',-1,loadApps)">←</button>
+        <button class="btn-quick" onclick="stepRange('apps',-1,loadApps)">←</button>
         <button class="btn-quick" id="apps-week-btn" onclick="setQuick('apps-from','apps-to','week',loadApps)">V?</button>
-        <button class="btn-quick" onclick="stepWeek('apps',1,loadApps)">→</button>
+        <button class="btn-quick" onclick="stepRange('apps',1,loadApps)">→</button>
       </div>
-      <select id="apps-active">
+      <select id="apps-active" onchange="loadApps()">
         <option value="">Aktivt + bakgrund</option>
         <option value="1">Bara aktivt fönster</option>
         <option value="0">Bara bakgrund</option>
@@ -574,15 +577,15 @@ a.row-link:hover{opacity:1;text-decoration:underline}
   <div id="page-gantt" class="page">
     <h1>Tidslinje</h1><p class="subtitle">Program och aktivitet över tid</p>
     <div class="filters">
-      <label>Från</label><input type="datetime-local" id="gantt-from">
-      <label>Till</label><input type="datetime-local" id="gantt-to">
+      <label>Från</label><input type="datetime-local" id="gantt-from"><span class="wk-hint" id="gantt-from-wk"></span>
+      <label>Till</label><input type="datetime-local" id="gantt-to"><span class="wk-hint" id="gantt-to-wk"></span>
       <button class="btn btn-primary" onclick="loadGantt()">Uppdatera</button>
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('gantt-from','gantt-to','today',loadGantt,true)">Idag</button>
         <button class="btn-quick" onclick="setQuick('gantt-from','gantt-to','yesterday',loadGantt,true)">Igår</button>
-        <button class="btn-quick" onclick="stepWeek('gantt',-1,loadGantt,true)">←</button>
+        <button class="btn-quick" onclick="stepGantt(-1)">←</button>
         <button class="btn-quick" id="gantt-week-btn" onclick="setQuick('gantt-from','gantt-to','week',loadGantt,true)">V?</button>
-        <button class="btn-quick" onclick="stepWeek('gantt',1,loadGantt,true)">→</button>
+        <button class="btn-quick" onclick="stepGantt(1)">→</button>
       </div>
       <select id="gantt-project" onchange="loadGantt(); if(teamPlanningData) renderTeamPlanning(teamPlanningData, this.value);" title="Filtrera på projekt">
         <option value="">Alla projekt</option>
@@ -623,7 +626,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div id="team-section" style="display:none;margin-top:32px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer" onclick="toggleSection('team')">
         <span id="team-arrow" style="font-size:11px;color:var(--muted);transition:transform .2s">▶</span>
-        <h3 id="team-section-title" style="margin:0;font-size:15px">Teamplanering</h3>
+        <h3 id="team-section-title" style="margin:0;font-size:15px">Planering</h3>
         <button onclick="event.stopPropagation();loadTeamPlanning()" class="btn-secondary" style="padding:5px 14px;font-size:12px">⟳ Ladda</button>
       </div>
       <div id="team-body" style="display:none">
@@ -923,6 +926,7 @@ function setQuick(fromId, toId, preset, loadFn, isDatetime) {
     document.getElementById(toId).value   = isDatetime ? today()+'T23:59' : today();
     savePref(fromId, document.getElementById(fromId).value);
     savePref(toId,   document.getElementById(toId).value);
+    updateWkHint(fromId); updateWkHint(toId);
     loadFn();
   } else if (preset === 'yesterday') {
     const y = daysAgo(1);
@@ -930,6 +934,7 @@ function setQuick(fromId, toId, preset, loadFn, isDatetime) {
     document.getElementById(toId).value   = isDatetime ? y+'T23:59' : y;
     savePref(fromId, document.getElementById(fromId).value);
     savePref(toId,   document.getElementById(toId).value);
+    updateWkHint(fromId); updateWkHint(toId);
     loadFn();
   } else if (preset === 'week') {
     weekOffset[section] = 0;
@@ -966,6 +971,7 @@ function applyWeek(section, offset, loadFn, isDatetime) {
   document.getElementById(toId).value   = isDatetime ? fmt(sun)+'T23:59' : fmt(sun);
   savePref(fromId, document.getElementById(fromId).value);
   savePref(toId,   document.getElementById(toId).value);
+  updateWkHint(fromId); updateWkHint(toId);
 
   const wn = weekNumber(mon);
   const btn = document.getElementById(section + '-week-btn');
@@ -978,6 +984,31 @@ function stepWeek(section, dir, loadFn, isDatetime) {
   weekOffset[section] = (weekOffset[section] || 0) + dir;
   applyWeek(section, weekOffset[section], loadFn, isDatetime);
 }
+
+function stepRange(section, dir, loadFn) {
+  const fromEl = document.getElementById(section + '-from');
+  const toEl   = document.getElementById(section + '-to');
+  const from   = new Date(fromEl.value);
+  const to     = new Date(toEl.value);
+  const isSingleDay = (to - from) <= 3600 * 25 * 1000;
+  const days = isSingleDay ? 1 : 7;
+  from.setDate(from.getDate() + dir * days);
+  to.setDate(to.getDate()   + dir * days);
+  const isDatetime = fromEl.type === 'datetime-local';
+  fromEl.value = isDatetime ? ganttDatetimeLocal(from) : from.toISOString().slice(0, 10);
+  toEl.value   = isDatetime ? ganttDatetimeLocal(to)   : to.toISOString().slice(0, 10);
+  savePref(section + '-from', fromEl.value);
+  savePref(section + '-to',   toEl.value);
+  updateWkHint(section + '-from'); updateWkHint(section + '-to');
+  weekOffset[section] = isSingleDay ? 0 : (weekOffset[section] || 0) + dir;
+  const [wFrom] = isoWeek(from);
+  const [wTo]   = isoWeek(to);
+  const wkBtn = document.getElementById(section + '-week-btn');
+  if (wkBtn) wkBtn.textContent = wFrom === wTo ? 'V' + wFrom : 'V' + wFrom + '–' + wTo;
+  loadFn();
+}
+
+function stepGantt(dir) { stepRange('gantt', dir, loadGantt); }
 
 function showPage(el) {
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -993,6 +1024,19 @@ function showPage(el) {
   if(el.dataset.page==='sessions')  loadSessions();
   if(el.dataset.page==='gantt')     { loadGantt(); autoLoadPlanning(); }
   if(el.dataset.page==='ai')        loadAiSettings();
+}
+
+// ── Veckoetiketter bredvid datumfält ──────────────────────────
+function updateWkHint(inputId) {
+  const el = document.getElementById(inputId);
+  const sp = document.getElementById(inputId + '-wk');
+  if (!el || !sp || !el.value) { if (sp) sp.textContent = ''; return; }
+  const [w] = isoWeek(new Date(el.value));
+  sp.textContent = 'V' + w;
+}
+function updateAllWkHints() {
+  ['dash-from','dash-to','per-from','per-to','apps-from','apps-to','gantt-from','gantt-to']
+    .forEach(updateWkHint);
 }
 
 // ── Inställningspersistens ─────────────────────────────────────
@@ -1090,11 +1134,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (el) el.addEventListener('change', () => savePref(id, el.value));
   });
   document.getElementById('per-search')?.addEventListener('input', e => savePref('per-search', e.target.value));
-  // Datumfält: spara även vid manuell redigering
+  // Datumfält: spara och uppdatera vecko­etikett vid manuell redigering
   ['dash-from','dash-to','per-from','per-to','apps-from','apps-to','gantt-from','gantt-to'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('change', () => savePref(id, el.value));
+    if (el) el.addEventListener('change', () => { savePref(id, el.value); updateWkHint(id); });
   });
+  updateAllWkHints();
   FILTER_VIEWS.forEach(updateProgFilterBadge);
   // Återställ senast besökta sida (annars dashboard)
   const savedPage = localStorage.getItem('at-page') || 'dashboard';
@@ -1839,7 +1884,7 @@ async function loadTeamPlanning() {
 
   // Sätt dynamisk rubrik med gruppnamn
   const title = document.getElementById('team-section-title');
-  if (title && d.group) title.textContent = 'Grupp ' + d.group;
+  if (title && d.group) title.textContent = 'Planering Grupp ' + d.group;
 
   teamPlanningData = d.rows;
   renderTeamPlanning(teamPlanningData, document.getElementById('gantt-project')?.value || '');
@@ -1888,7 +1933,7 @@ function renderTeamPlanning(rows, selectedProject) {
         const isCur = w === curWeekStr;
         return tot
           ? `<td style="padding:7px 4px;text-align:center;border-top:2px solid var(--border);border-bottom:1px solid var(--border)">
-               <div style="background:${isCur?'var(--accent)':'var(--border)'};color:${isCur?'#000':'var(--muted)'};border-radius:4px;padding:2px 6px;font-weight:700;font-family:var(--mono)">${tot}h</div></td>`
+               <div style="background:${isCur?'var(--accent)':'var(--border)'};color:${tot>40?'#c0392b':isCur?'#000':'var(--muted)'};border-radius:4px;padding:2px 6px;font-weight:700;font-family:var(--mono)">${tot}h</div></td>`
           : `<td style="border-top:2px solid var(--border);border-bottom:1px solid var(--border)"></td>`;
       }).join('')}
     </tr>`;
@@ -1973,6 +2018,12 @@ async function loadGantt() {
   const to      = document.getElementById('gantt-to').value;
   const project = document.getElementById('gantt-project').value;
   if (!from || !to) return;
+  // Uppdatera vecko-knapp med faktisk vecka för vald period
+  const [wFrom] = isoWeek(new Date(from));
+  const [wTo]   = isoWeek(new Date(to));
+  const wkBtn = document.getElementById('gantt-week-btn');
+  if (wkBtn) wkBtn.textContent = wFrom === wTo ? 'V' + wFrom : 'V' + wFrom + '–' + wTo;
+  updateWkHint('gantt-from'); updateWkHint('gantt-to');
   const r = await fetch(`/api/gantt?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&project=${project}`);
   ganttData = (await r.json()).filter(g => isProgVisible('gantt', g.process_name));
   ganttExpandedRows.clear();
@@ -2291,6 +2342,40 @@ document.addEventListener('DOMContentLoaded', () => {
         drawGantt();
       }
     });
+  });
+
+  // Klick på dagrubrik → zooma till den dagen (bara när fler än en dag visas)
+  const hCanvas = document.getElementById('gantt-header');
+  hCanvas.style.cursor = 'default';
+  // Klick på dagrubrik → zooma till den dagen (bara i flerdagarsvy)
+  hCanvas.style.cursor = 'default';
+  hCanvas.addEventListener('click', e => {
+    const fromEl   = document.getElementById('gantt-from');
+    const toEl     = document.getElementById('gantt-to');
+    const from     = new Date(fromEl.value);
+    const to       = new Date(toEl.value);
+    if ((to - from) <= 3600 * 25 * 1000) return;  // endagsvy – inget att zooma in
+    const rect = hCanvas.getBoundingClientRect();
+    const mx   = e.clientX - rect.left;
+    if (mx <= LABEL_W) return;
+    const clickedSec  = (mx - LABEL_W - ganttOffsetX) / ganttScale;
+    const clickedDate = new Date(from.getTime() + clickedSec * 1000);
+    clickedDate.setHours(0, 0, 0, 0);
+    const dayStr = clickedDate.toISOString().slice(0, 10);
+    fromEl.value = dayStr + 'T00:00';
+    toEl.value   = dayStr + 'T23:59';
+    savePref('gantt-from', fromEl.value);
+    savePref('gantt-to',   toEl.value);
+    ganttOffsetX = 0;
+    loadGantt();
+  });
+
+  hCanvas.addEventListener('mousemove', e => {
+    const from = new Date(document.getElementById('gantt-from').value);
+    const to   = new Date(document.getElementById('gantt-to').value);
+    const rect = hCanvas.getBoundingClientRect();
+    const mx   = e.clientX - rect.left;
+    hCanvas.style.cursor = ((to - from) > 3600 * 25 * 1000 && mx > LABEL_W) ? 'pointer' : 'default';
   });
 
   // Drag för panorering (horisontellt) – behålls men offset nollställs vid loadGantt
