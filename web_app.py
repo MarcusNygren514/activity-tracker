@@ -1358,12 +1358,43 @@ async function submitFeedback() {
   const status   = document.getElementById('fb-status');
   if (!message) { status.textContent = 'Skriv ett meddelande.'; return; }
 
-  const cfg = await fetch('/api/config').then(r => r.json());
-  const diag = await loadDiag();
+  const cfg  = await fetch('/api/config').then(r => r.json());
+  const diag = await fetch('/api/diagnostics').then(r => r.json()).catch(() => null);
 
+  status.textContent = 'Skickar…';
+
+  if (cfg.backend_ready) {
+    try {
+      const resp = await fetch(`${BACKEND_URL}/feedback`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          token:       cfg.token || '',
+          name:        cfg.user_name || '',
+          email:       cfg.user_email || '',
+          category,
+          message,
+          version:     cfg.version,
+          diagnostics: diag || {},
+        }),
+      });
+      const data = await resp.json();
+      if (!data.ok) throw new Error(data.error || 'Okänt fel');
+      document.getElementById('fb-message').value = '';
+      status.style.color = 'var(--accent)';
+      status.textContent = '✓ Feedback skickad – tack!';
+      setTimeout(() => { status.textContent = ''; status.style.color = ''; }, 5000);
+      return;
+    } catch(e) {
+      status.style.color = 'var(--accent2)';
+      status.textContent = `Kunde inte nå servern (${e.message}) – öppnar mailapp istället`;
+      setTimeout(() => { status.textContent = ''; status.style.color = ''; }, 6000);
+    }
+  }
+
+  // Fallback: mailto
   const diagText = diag && !diag.error ? [
-    '',
-    '── Diagnostik ───────────────────',
+    '', '── Diagnostik ───────────────────',
     `App-version:    ${diag.app_version}`,
     `OS:             ${diag.os_version}`,
     `Python:         ${diag.python_version}`,
@@ -1373,14 +1404,11 @@ async function submitFeedback() {
     `Tracker:        ${diag.tracker_running ? 'Aktiv' : 'Ej aktiv'}`,
     `Senaste fel:    ${diag.last_error || 'inga'}`,
   ].join('\n') : '';
-
   const subject = encodeURIComponent(`[AT Feedback] ${category}`);
-  const body = encodeURIComponent(
+  const body    = encodeURIComponent(
     `Från: ${cfg.user_name || ''} (${cfg.user_email || ''})\nVersion: ${cfg.version}\nKategori: ${category}\n\n${message}${diagText}`
   );
-
   window.location.href = `mailto:${cfg.feedback_email}?subject=${subject}&body=${body}`;
-
   document.getElementById('fb-message').value = '';
   status.style.color = 'var(--accent)';
   status.textContent = '✓ Din mailapp öppnas – skicka därifrån';
@@ -1618,7 +1646,7 @@ async function loadApps() {
   const from=document.getElementById('apps-from').value, to=document.getElementById('apps-to').value;
   const active=document.getElementById('apps-active').value;
   const project=document.getElementById('apps-project').value;
-  const r=await fetch(`/api/apps?from=${from}&to=${to}&active=${active}`);
+  const r=await fetch(`/api/apps?from=${from}&to=${to}&active=${active}&project=${project}`);
   const d=await r.json();
   refreshProjectDropdown('apps-project', from, to);
   updateProjectSummary('apps-proj-summary', project, from, to);
@@ -2361,7 +2389,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const clickedSec  = (mx - LABEL_W - ganttOffsetX) / ganttScale;
     const clickedDate = new Date(from.getTime() + clickedSec * 1000);
     clickedDate.setHours(0, 0, 0, 0);
-    const dayStr = clickedDate.toISOString().slice(0, 10);
+    const y = clickedDate.getFullYear();
+    const m = String(clickedDate.getMonth() + 1).padStart(2, '0');
+    const d = String(clickedDate.getDate()).padStart(2, '0');
+    const dayStr = `${y}-${m}-${d}`;
     fromEl.value = dayStr + 'T00:00';
     toEl.value   = dayStr + 'T23:59';
     savePref('gantt-from', fromEl.value);
@@ -2944,12 +2975,33 @@ def api_apps():
     from_date = request.args.get("from","")
     to_date   = request.args.get("to","")
     active    = request.args.get("active","")
+    project   = request.args.get("project","").strip()
     df, params = date_filter(from_date, to_date)
     clauses=[df]; p=list(params)
     if active in ("0","1"):
         clauses.append("p.is_active=?"); p.append(int(active))
     where=" AND ".join(clauses)
     db=get_db()
+    if project:
+        rows = db.execute(
+            f"SELECT p.process_name, p.window_title, p.url, p.exe_path, p.duration_sec, p.ended_at FROM periods p WHERE {where}",
+            p
+        ).fetchall()
+        db.close()
+        rows = [dict(r) for r in rows]
+        _, keywords = _get_registry_and_kws()
+        rows = [r for r in rows if _match_row_project(r, keywords) == project]
+        from collections import defaultdict
+        groups = defaultdict(lambda: {"total_sec": 0, "period_count": 0, "last_seen": ""})
+        for r in rows:
+            pn = r["process_name"]
+            groups[pn]["total_sec"] += r["duration_sec"]
+            groups[pn]["period_count"] += 1
+            if r["ended_at"] > groups[pn]["last_seen"]:
+                groups[pn]["last_seen"] = r["ended_at"]
+        result = [{"process_name": pn, **v} for pn, v in groups.items()]
+        result.sort(key=lambda x: x["total_sec"], reverse=True)
+        return jsonify(result)
     rows=db.execute(
         f"SELECT p.process_name, SUM(p.duration_sec) as total_sec, COUNT(*) as period_count, MAX(p.ended_at) as last_seen FROM periods p WHERE {where} GROUP BY p.process_name ORDER BY total_sec DESC",
         p

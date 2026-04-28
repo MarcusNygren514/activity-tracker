@@ -1,5 +1,10 @@
 # Ändringslogg – Activity Tracker
 
+## v0.18b (ej släppt)
+- Buggfix: tidslinje-zoom klickade en dag fel pga UTC-konvertering (lokal tidszon används nu)
+- Program-vyn filtrerar nu programlistan på valt projekt (tidigare visades alla program oavsett projekt)
+- Feedback skickas nu direkt via backend (Gmail) utan att öppna mailappen – fallback till mailto om backend ej nås
+
 ## v0.17b (2026-04-23)
 - Program-vyn: aktiv/bakgrund-filter uppdaterar listan direkt utan att klicka Uppdatera
 - Tidslinje: klick på en dag i tidsaxeln zoomar till just den dagen (vid flerdagarsvy)

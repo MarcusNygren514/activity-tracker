@@ -79,5 +79,14 @@ All HTML/CSS/JS är inbäddad som en Python-råsträng `HTML = r"""..."""` i `we
 ## Aktuellt version
 `v0.17b` (släppt 2026-04-23). Se `CHANGELOG.md` för fullständig historik.
 
+## Autostart
+Appen registreras för autostart via Windows-registret:
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `ActivityTracker`
+
+Värdet pekar normalt på källkoden:
+`"C:\Python312\pythonw.exe" "C:\activity_tracker\tray_app.py"`
+
+Inno Setup-installern skriver sin egen post (pekar på installerad `.exe`) men den skrivs över manuellt till källkods-sökvägen så att senaste källkod alltid används vid start.
+
 ## Bygga installer
 PyInstaller → `.exe`, sedan Inno Setup för installationsprogram. Releaser görs via GitHub Releases – backend servar nedladdningar.

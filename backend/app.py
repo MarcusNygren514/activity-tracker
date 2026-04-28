@@ -144,17 +144,19 @@ def feedback():
     version     = data.get("version", "okänd")
     diagnostics = data.get("diagnostics", {})
 
-    if not token or not message:
-        return jsonify({"ok": False, "error": "Token och meddelande krävs"}), 400
+    if not message:
+        return jsonify({"ok": False, "error": "Meddelande krävs"}), 400
 
     db   = get_db()
-    user = db.execute("SELECT * FROM users WHERE id=?", (token,)).fetchone()
-    if not user:
-        return jsonify({"ok": False, "error": "Ogiltig token – registrera dig igen"}), 401
+    user = db.execute("SELECT * FROM users WHERE id=?", (token,)).fetchone() if token else None
+
+    sender_name  = user["name"]  if user else data.get("name", "Okänd användare").strip() or "Okänd användare"
+    sender_email = user["email"] if user else data.get("email", "").strip()
+    user_id      = token if user else "anon"
 
     db.execute(
         "INSERT INTO feedback (user_id, category, message, app_version, created_at) VALUES (?,?,?,?,?)",
-        (token, category, message, version, datetime.now().isoformat()),
+        (user_id, category, message, version, datetime.now().isoformat()),
     )
     db.commit()
 
@@ -173,8 +175,8 @@ def feedback():
 
     send_email(
         ADMIN_EMAIL,
-        f"[AT Feedback] {category} – {user['name']}",
-        f"Från:    {user['name']} ({user['email']})\n"
+        f"[AT Feedback] {category} – {sender_name}",
+        f"Från:    {sender_name}{(' (' + sender_email + ')') if sender_email else ''}\n"
         f"Version: {version}\n"
         f"Kategori:{category}\n\n"
         f"{message}"
