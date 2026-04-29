@@ -4,6 +4,7 @@
 - Buggfix: tidslinje-zoom klickade en dag fel pga UTC-konvertering (lokal tidszon används nu)
 - Program-vyn filtrerar nu programlistan på valt projekt (tidigare visades alla program oavsett projekt)
 - Feedback skickas nu direkt via backend (Gmail) utan att öppna mailappen – fallback till mailto om backend ej nås
+- Självläkande start: stale lock-fil rensas automatiskt vid uppstart om ingen annan instans faktiskt körs
 
 ## v0.17b (2026-04-23)
 - Program-vyn: aktiv/bakgrund-filter uppdaterar listan direkt utan att klicka Uppdatera

@@ -71,7 +71,8 @@ All HTML/CSS/JS är inbäddad som en Python-råsträng `HTML = r"""..."""` i `we
 
 **Databas-migrering:** inline med `PRAGMA user_version` i `tracker.py::init_db()`
 
-**Instansskydd:** `msvcrt.locking` på `~/activity_tracker/tray.lock`
+**Instansskydd:** `msvcrt.locking` på `~/activity_tracker/tray.lock`  
+Vid låsfel: kontrollerar via WMI om en verklig pythonw-instans kör `tray_app.py`. Om inte → raderar stale lock automatiskt och startar om. Aldrig mer manuell inblandning.
 
 ## Backend-miljövariabler (Railway)
 `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ADMIN_EMAIL`, `GITHUB_TOKEN`, `GITHUB_REPO`, `DB_PATH`
