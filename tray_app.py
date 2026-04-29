@@ -264,14 +264,42 @@ def main():
 if __name__ == "__main__":
     # Förhindra flera instanser med en låsfil
     _LOCK = Path.home() / "activity_tracker" / "tray.lock"
-    try:
+    import msvcrt, sys
+
+    def _acquire_lock():
         _LOCK.parent.mkdir(exist_ok=True)
-        _lock_fh = open(_LOCK, "w")
-        import msvcrt
-        msvcrt.locking(_lock_fh.fileno(), msvcrt.LK_NBLCK, 1)
-    except (OSError, IOError):
-        logging.warning("En instans körs redan – avslutar")
-        import sys; sys.exit(0)
+        fh = open(_LOCK, "w")
+        msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        return fh
+
+    _lock_fh = None
+    for _attempt in range(2):
+        try:
+            _lock_fh = _acquire_lock()
+            break
+        except (OSError, IOError):
+            if _attempt == 0:
+                # Kontrollera om en verklig instans faktiskt körs
+                import subprocess
+                result = subprocess.run(
+                    ["wmic", "process", "where", "name='pythonw.exe'", "get", "commandline"],
+                    capture_output=True, text=True
+                )
+                if "tray_app.py" in result.stdout:
+                    logging.warning("En instans körs redan – avslutar")
+                    sys.exit(0)
+                # Stale lock – rensa och försök igen
+                logging.warning("Stale lock-fil hittad – rensar och startar om")
+                try:
+                    _LOCK.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            else:
+                logging.error("Kunde inte ta låset – avslutar")
+                sys.exit(1)
+
+    if _lock_fh is None:
+        sys.exit(1)
 
     try:
         logging.info("tray_app startar")
