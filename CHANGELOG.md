@@ -5,6 +5,8 @@
 - Program-vyn filtrerar nu programlistan på valt projekt (tidigare visades alla program oavsett projekt)
 - Feedback skickas nu direkt via backend (Gmail) utan att öppna mailappen – fallback till mailto om backend ej nås
 - Självläkande start: stale lock-fil rensas automatiskt vid uppstart om ingen annan instans faktiskt körs
+- Maj-Britt: stöd för OpenAI/ChatGPT som AI-källa (gpt-4o, gpt-4o-mini m.fl.)
+- Tidsredovisningsförslag under tidslinjen: summerad förgrundsid per projekt och dag, upprundat till närmaste halvtimme, med projektnamn från planeringsfilen
 
 ## v0.17b (2026-04-23)
 - Program-vyn: aktiv/bakgrund-filter uppdaterar listan direkt utan att klicka Uppdatera

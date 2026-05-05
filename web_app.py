@@ -11,6 +11,7 @@ import json
 import os
 import urllib.request
 import urllib.error
+from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Flask, render_template_string, jsonify, request, Response
@@ -622,6 +623,15 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     </div>
     <div id="gantt-detail" style="margin-top:16px"></div>
 
+    <!-- Tidsredovisningsförslag -->
+    <div id="time-report-section" style="display:none;margin-top:24px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <h3 style="margin:0;font-size:15px">Tidsredovisning</h3>
+        <span style="font-size:11px;color:var(--muted)">Förslag baserat på aktiv förgrundsid – upprundat till närmaste halvtimme</span>
+      </div>
+      <div id="time-report-table"></div>
+    </div>
+
     <!-- Teamplanering -->
     <div id="team-section" style="display:none;margin-top:32px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer" onclick="toggleSection('team')">
@@ -658,6 +668,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
           <label>Källa</label>
           <select id="ai-provider" onchange="onProviderChange()" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;color:var(--text);font-size:12px;outline:none">
             <option value="ollama">Ollama (lokalt)</option>
+            <option value="openai">OpenAI / ChatGPT</option>
             <option value="anthropic">Anthropic API (moln)</option>
           </select>
           <span id="ai-privacy-badge" class="ai-provider-badge local">🔒 Lokalt</span>
@@ -2060,6 +2071,67 @@ async function loadGantt() {
   refreshProjectDropdown('gantt-project', from, to);
   updateProjectSummary('gantt-proj-summary', project, from, to);
   if (document.getElementById('geo-section')?.style.display !== 'none') loadGeoLocations();
+  loadTimeReport(from, to);
+}
+
+async function loadTimeReport(from, to) {
+  const sec = document.getElementById('time-report-section');
+  const tbl = document.getElementById('time-report-table');
+  const r   = await fetch(`/api/time-report?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+  const d   = await r.json();
+  if (!d.projects || !d.projects.length) { sec.style.display = 'none'; return; }
+  sec.style.display = '';
+
+  const days = d.days;
+  const DAY_W = 64;
+  const LABEL_W_TR = 200;
+
+  // Formatera dag-rubrik: "mån 5/5"
+  const dayNames = ['sön','mån','tis','ons','tor','fre','lör'];
+  function fmtDay(iso) {
+    const dt = new Date(iso + 'T12:00:00');
+    return `${dayNames[dt.getDay()]} ${dt.getDate()}/${dt.getMonth()+1}`;
+  }
+
+  // Avrunda uppåt till närmaste halvtimme
+  function roundUp(sec) {
+    if (sec === 0) return 0;
+    return Math.ceil(sec / 1800) * 0.5;
+  }
+
+  let html = `<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:12px;font-family:var(--mono);min-width:${LABEL_W_TR + days.length * DAY_W}px">`;
+
+  // Rubrikrad
+  html += `<tr style="color:var(--muted)">`;
+  html += `<th style="width:${LABEL_W_TR}px;min-width:${LABEL_W_TR}px;text-align:left;padding:6px 10px;border-bottom:1px solid var(--border)">Projekt</th>`;
+  for (const day of days) {
+    const dt = new Date(day + 'T12:00:00');
+    const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+    html += `<th style="width:${DAY_W}px;text-align:center;padding:6px 4px;border-bottom:1px solid var(--border);${isWeekend ? 'opacity:.4' : ''}">${fmtDay(day)}</th>`;
+  }
+  html += `</tr>`;
+
+  // En rad per projekt
+  for (const proj of d.projects) {
+    const totalSec = Object.values(proj.days).reduce((a,b) => a+b, 0);
+    const dimRow   = totalSec < 1800;
+    html += `<tr style="${dimRow ? 'opacity:.35' : ''}">`;
+    const label = proj.name ? `${proj.project} – ${proj.name}` : proj.project;
+    html += `<td style="padding:6px 10px;border-bottom:1px solid var(--border);color:var(--accent);font-weight:600" title="${proj.name || ''}">${label}</td>`;
+    for (const day of days) {
+      const sec = proj.days[day] || 0;
+      const h   = roundUp(sec);
+      const dt  = new Date(day + 'T12:00:00');
+      const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+      html += `<td style="text-align:center;padding:6px 4px;border-bottom:1px solid var(--border);${isWeekend ? 'opacity:.4' : ''}">`;
+      if (h > 0) html += `<span style="color:var(--text)">${h.toFixed(1)}h</span>`;
+      html += `</td>`;
+    }
+    html += `</tr>`;
+  }
+
+  html += `</table></div>`;
+  tbl.innerHTML = html;
 }
 
 
@@ -2498,16 +2570,28 @@ function onProviderChange(save) {
   const badge = document.getElementById('ai-privacy-badge');
   const keyWrap = document.getElementById('ai-apikey-wrap');
   const refreshBtn = document.getElementById('ai-refresh-btn');
+  const modelSel = document.getElementById('ai-model');
+  const keyInput = document.getElementById('ai-api-key');
   if (p === 'ollama') {
     badge.className = 'ai-provider-badge local'; badge.textContent = '🔒 Lokalt';
     keyWrap.style.display = 'none';
     refreshBtn.style.display = '';
     refreshOllamaModels();
+  } else if (p === 'openai') {
+    badge.className = 'ai-provider-badge cloud'; badge.textContent = '☁ Moln';
+    keyWrap.style.display = 'flex';
+    refreshBtn.style.display = 'none';
+    keyInput.placeholder = 'sk-...';
+    modelSel.innerHTML = `
+      <option value="gpt-4o-mini">gpt-4o-mini (snabb/billig)</option>
+      <option value="gpt-4o">gpt-4o (bäst)</option>
+      <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+      <option value="gpt-4.1">gpt-4.1</option>`;
   } else {
     badge.className = 'ai-provider-badge cloud'; badge.textContent = '☁ Moln';
     keyWrap.style.display = 'flex';
     refreshBtn.style.display = 'none';
-    const modelSel = document.getElementById('ai-model');
+    keyInput.placeholder = 'sk-ant-...';
     modelSel.innerHTML = `
       <option value="claude-haiku-4-5-20251001">Haiku 4.5 (snabb/billig)</option>
       <option value="claude-sonnet-4-6">Sonnet 4.6 (bäst)</option>`;
@@ -2991,7 +3075,6 @@ def api_apps():
         rows = [dict(r) for r in rows]
         _, keywords = _get_registry_and_kws()
         rows = [r for r in rows if _match_row_project(r, keywords) == project]
-        from collections import defaultdict
         groups = defaultdict(lambda: {"total_sec": 0, "period_count": 0, "last_seen": ""})
         for r in rows:
             pn = r["process_name"]
@@ -3037,7 +3120,6 @@ def api_gantt():
         rows = [r for r in rows if _match_row_project(r, keywords) == project_filter]
 
     # Gruppera per process_name
-    from collections import defaultdict
     procs = defaultdict(lambda: {"periods":[], "titles": defaultdict(lambda: {"periods":[],"is_active":0}), "has_active":0, "active_sec":0})
 
     for r in rows:
@@ -3075,6 +3157,56 @@ def api_gantt():
             "total_sec":    sum(p["duration_sec"] for p in data["periods"]),
         })
     return jsonify(result)
+
+
+@app.route("/api/time-report")
+def api_time_report():
+    from_str = request.args.get("from", "")
+    to_str   = request.args.get("to", "")
+    if not from_str or not to_str:
+        return jsonify([])
+
+    from datetime import date, timedelta
+    try:
+        d0 = date.fromisoformat(from_str[:10])
+        d1 = date.fromisoformat(to_str[:10])
+    except ValueError:
+        return jsonify([])
+
+    days = []
+    cur = d0
+    while cur <= d1:
+        days.append(cur.isoformat())
+        cur += timedelta(days=1)
+
+    db = get_db()
+    rows = db.execute(
+        "SELECT process_name, window_title, url, exe_path, started_at, duration_sec "
+        "FROM periods WHERE started_at >= ? AND started_at < date(?, '+1 day') AND is_active = 1",
+        (from_str, to_str)
+    ).fetchall()
+    db.close()
+
+    rows = [dict(r) for r in rows]
+    registry, keywords = _get_registry_and_kws()
+
+    # project -> day -> seconds
+    totals = defaultdict(lambda: defaultdict(int))
+    for r in rows:
+        proj = _match_row_project(r, keywords)
+        if not proj:
+            continue
+        day = r["started_at"][:10]
+        totals[proj][day] += r["duration_sec"]
+
+    result = []
+    for proj in sorted(totals.keys()):
+        result.append({
+            "project": proj,
+            "name":    registry.get(proj, ""),
+            "days":    {day: totals[proj].get(day, 0) for day in days},
+        })
+    return jsonify({"days": days, "projects": result})
 
 
 @app.route("/api/all_programs")
@@ -3195,12 +3327,8 @@ def _clean_title(title, proc):
     return t
 
 
-_PROJECT_RE = re.compile(r'P\d{4,6}', re.IGNORECASE)
-
-
 def extract_projects(db, since_days=7):
     """Identifierar projektnummer ur sökvägar och fönsterrubriker."""
-    from collections import defaultdict
     two_weeks_ago = (datetime.now() - timedelta(days=since_days)).strftime("%Y-%m-%d")
     rows = db.execute("""
         SELECT url, window_title, SUM(duration_sec) as secs
@@ -3214,7 +3342,7 @@ def extract_projects(db, since_days=7):
     for r in rows:
         found = set()
         for text in [r["url"] or "", r["window_title"] or ""]:
-            for m in _PROJECT_RE.findall(text):
+            for m in _PS_CODE_RE.findall(text):
                 found.add(m.upper())
         for proj in found:
             projects[proj]["secs"] += r["secs"]
@@ -3242,7 +3370,6 @@ def build_ai_context(db):
         ORDER BY day DESC, secs DESC
     """, (two_weeks_ago,)).fetchall()
 
-    from collections import defaultdict
     by_day = defaultdict(list)
     for r in rows:
         if r["process_name"].lower() not in _NOISE_PROCS:
@@ -3394,8 +3521,7 @@ def build_ai_context(db):
         """, (two_weeks_ago,)).fetchall()
 
         if loc_rows:
-            from collections import defaultdict as _dd
-            locs_by_day = _dd(list)
+            locs_by_day = defaultdict(list)
             for r in loc_rows:
                 if r["address"]:
                     locs_by_day[r["day"]].append(
@@ -3497,6 +3623,47 @@ def stream_ollama(messages, model, context):
         yield "\n\n⚠️ Kunde inte ansluta till Ollama. Kör `ollama serve` i terminalen."
 
 
+def stream_openai(messages, model, api_key, context):
+    full_messages = [{"role": "system", "content": SYSTEM_PROMPT + "\n\n" + context}] + messages
+    payload = json.dumps({
+        "model": model,
+        "messages": full_messages,
+        "stream": True,
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            for line in resp:
+                line = line.decode().strip()
+                if line.startswith("data: "):
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        text = chunk.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        if text:
+                            yield text
+                    except Exception:
+                        pass
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        try:
+            msg = json.loads(body).get("error", {}).get("message", body)
+        except Exception:
+            msg = body
+        yield f"\n\n⚠️ OpenAI-fel: {msg}"
+    except urllib.error.URLError as e:
+        yield f"\n\n⚠️ Nätverksfel: {e.reason}"
+
+
 def stream_anthropic(messages, model, api_key, context):
     payload = json.dumps({
         "model": model,
@@ -3556,6 +3723,8 @@ def api_ai_chat():
     def generate():
         if provider == "anthropic":
             gen = stream_anthropic(messages, model, api_key, context)
+        elif provider == "openai":
+            gen = stream_openai(messages, model, api_key, context)
         else:
             gen = stream_ollama(messages, model, context)
         for text in gen:
@@ -3588,7 +3757,6 @@ def api_diagnostics():
     # Ollama igång?
     ollama_running = False
     try:
-        import urllib.request
         urllib.request.urlopen("http://localhost:11434", timeout=2)
         ollama_running = True
     except Exception:
