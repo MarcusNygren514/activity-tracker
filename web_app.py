@@ -688,6 +688,20 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         <button class="btn btn-ghost" onclick="saveAiSettings()" style="margin-left:auto">Spara inställningar</button>
       </div>
 
+      <!-- Varning: ingen AI konfigurerad -->
+      <div id="ai-no-source" style="display:none;margin-top:12px;padding:14px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);font-size:13px">
+        <div style="font-weight:600;margin-bottom:6px;color:var(--text)">Ingen AI-källa konfigurerad</div>
+        <div style="color:var(--muted);line-height:1.6">
+          Välj ett av alternativen för att använda Maj-Britt:<br>
+          <b>Ollama (lokalt)</b> – gratis, kör på din dator.
+          Ladda ner på <a href="https://ollama.com" target="_blank" style="color:var(--accent)">ollama.com</a>,
+          installera och kör sedan <code style="font-family:var(--mono);background:var(--bg);padding:1px 5px;border-radius:3px">ollama pull llama3.2</code>.<br>
+          <b>OpenAI / ChatGPT</b> – kräver API-nyckel från
+          <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent)">platform.openai.com</a>.
+          Välj OpenAI i listan ovan och klistra in nyckeln.
+        </div>
+      </div>
+
       <!-- Förslag – alltid synliga -->
       <div class="ai-suggestions-wrap">
         <div class="ai-suggestions-label">
@@ -2550,6 +2564,21 @@ function loadAiSettings() {
     onProviderChange(false);
   } catch(e) {}
   renderAiRecentSuggestions();
+  checkAiSource();
+}
+
+async function checkAiSource() {
+  const banner  = document.getElementById('ai-no-source');
+  const s       = JSON.parse(localStorage.getItem('at-ai-settings') || '{}');
+  const provider = s.provider || 'ollama';
+  // Moln-provider med API-nyckel → alltid OK
+  if ((provider === 'openai' || provider === 'anthropic') && s.api_key) {
+    banner.style.display = 'none'; return;
+  }
+  // Ollama (eller moln utan nyckel) → kolla om Ollama svarar
+  const diag = await fetch('/api/diagnostics').then(r => r.json()).catch(() => null);
+  const ollamaOk = diag && diag.ollama_running;
+  banner.style.display = ollamaOk ? 'none' : '';
 }
 
 function saveAiSettings() {
