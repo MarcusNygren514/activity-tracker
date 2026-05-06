@@ -624,12 +624,15 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div id="gantt-detail" style="margin-top:16px"></div>
 
     <!-- Tidsredovisningsförslag -->
-    <div id="time-report-section" style="display:none;margin-top:24px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <div id="time-report-section" style="display:none;margin-top:32px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;cursor:pointer" onclick="toggleSection('time-report')">
+        <span id="time-report-arrow" style="font-size:11px;color:var(--muted);transition:transform .2s">▶</span>
         <h3 style="margin:0;font-size:15px">Tidsredovisning</h3>
-        <span style="font-size:11px;color:var(--muted)">Förslag baserat på aktiv förgrundsid – upprundat till närmaste halvtimme</span>
+        <span style="font-size:11px;color:var(--muted)">Förslag baserat på aktiv och passiv tid – upprundat till närmaste halvtimme</span>
       </div>
-      <div id="time-report-table"></div>
+      <div id="time-report-body" style="display:none">
+        <div id="time-report-table"></div>
+      </div>
     </div>
 
     <!-- Teamplanering -->
@@ -3208,32 +3211,49 @@ def api_time_report():
         days.append(cur.isoformat())
         cur += timedelta(days=1)
 
+    PTV = 0.25  # Passivtidvikt – bakgrundstid räknas till 25%
+
     db = get_db()
-    rows = db.execute(
-        "SELECT process_name, window_title, url, exe_path, started_at, duration_sec "
-        "FROM periods WHERE started_at >= ? AND started_at < date(?, '+1 day') AND is_active = 1",
+    all_rows = db.execute(
+        "SELECT process_name, window_title, url, exe_path, started_at, duration_sec, is_active "
+        "FROM periods WHERE started_at >= ? AND started_at < date(?, '+1 day')",
         (from_str, to_str)
     ).fetchall()
     db.close()
 
-    rows = [dict(r) for r in rows]
+    all_rows = [dict(r) for r in all_rows]
     registry, keywords = _get_registry_and_kws()
 
-    # project -> day -> seconds
-    totals = defaultdict(lambda: defaultdict(int))
-    for r in rows:
+    # Total summerad förgrundsid per dag (tak för varje projekt)
+    day_cap = defaultdict(int)
+    for r in all_rows:
+        if r["is_active"]:
+            day_cap[r["started_at"][:10]] += r["duration_sec"]
+
+    # project -> day -> (fg_sec, bg_sec)
+    fg = defaultdict(lambda: defaultdict(int))
+    bg = defaultdict(lambda: defaultdict(int))
+    for r in all_rows:
         proj = _match_row_project(r, keywords)
         if not proj:
             continue
         day = r["started_at"][:10]
-        totals[proj][day] += r["duration_sec"]
+        if r["is_active"]:
+            fg[proj][day] += r["duration_sec"]
+        else:
+            bg[proj][day] += r["duration_sec"]
 
     result = []
-    for proj in sorted(totals.keys()):
+    for proj in sorted(set(list(fg.keys()) + list(bg.keys()))):
+        day_totals = {}
+        for day in days:
+            weighted = fg[proj][day] + bg[proj][day] * PTV
+            capped   = min(weighted, day_cap.get(day, weighted))
+            day_totals[day] = int(capped)
         result.append({
             "project": proj,
             "name":    registry.get(proj, ""),
-            "days":    {day: totals[proj].get(day, 0) for day in days},
+            "days":    day_totals,
         })
     return jsonify({"days": days, "projects": result})
 
