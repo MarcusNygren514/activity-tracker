@@ -12,7 +12,7 @@ import os
 import urllib.request
 import urllib.error
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from flask import Flask, render_template_string, jsonify, request, Response
 
@@ -3191,14 +3191,53 @@ def api_gantt():
     return jsonify(result)
 
 
+def _merge_intervals(ivs):
+    """Slår ihop överlappande intervall. ivs = lista av (start, end) i sekunder."""
+    if not ivs:
+        return []
+    ivs = sorted(ivs)
+    merged = [list(ivs[0])]
+    for s, e in ivs[1:]:
+        if s <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], e)
+        else:
+            merged.append([s, e])
+    return [(s, e) for s, e in merged]
+
+
+def _subtract_intervals(ivs, subtract):
+    """Klipper bort 'subtract'-intervall från 'ivs'."""
+    result = []
+    for iv_s, iv_e in ivs:
+        rem = [(iv_s, iv_e)]
+        for sub_s, sub_e in subtract:
+            new_rem = []
+            for r_s, r_e in rem:
+                if sub_e <= r_s or sub_s >= r_e:
+                    new_rem.append((r_s, r_e))
+                else:
+                    if r_s < sub_s:
+                        new_rem.append((r_s, sub_s))
+                    if sub_e < r_e:
+                        new_rem.append((sub_e, r_e))
+            rem = new_rem
+        result.extend(rem)
+    return result
+
+
+def _sum_intervals(ivs):
+    return sum(e - s for s, e in ivs)
+
+
 @app.route("/api/time-report")
 def api_time_report():
+    PTV = 0.25  # Passivtidvikt – bakgrundstid räknas till 25%
+
     from_str = request.args.get("from", "")
     to_str   = request.args.get("to", "")
     if not from_str or not to_str:
         return jsonify([])
 
-    from datetime import date, timedelta
     try:
         d0 = date.fromisoformat(from_str[:10])
         d1 = date.fromisoformat(to_str[:10])
@@ -3211,12 +3250,10 @@ def api_time_report():
         days.append(cur.isoformat())
         cur += timedelta(days=1)
 
-    PTV = 0.25  # Passivtidvikt – bakgrundstid räknas till 25%
-
     db = get_db()
     all_rows = db.execute(
-        "SELECT process_name, window_title, url, exe_path, started_at, duration_sec, is_active "
-        "FROM periods WHERE started_at >= ? AND started_at < date(?, '+1 day')",
+        "SELECT process_name, window_title, url, exe_path, started_at, ended_at, is_active "
+        "FROM periods WHERE started_at >= ? AND started_at < date(?, '+1 day') AND ended_at IS NOT NULL",
         (from_str, to_str)
     ).fetchall()
     db.close()
@@ -3224,32 +3261,49 @@ def api_time_report():
     all_rows = [dict(r) for r in all_rows]
     registry, keywords = _get_registry_and_kws()
 
-    # Total summerad förgrundsid per dag (tak för varje projekt)
-    day_cap = defaultdict(int)
-    for r in all_rows:
-        if r["is_active"]:
-            day_cap[r["started_at"][:10]] += r["duration_sec"]
+    def to_ts(s):
+        return datetime.fromisoformat(s).timestamp()
 
-    # project -> day -> (fg_sec, bg_sec)
-    fg = defaultdict(lambda: defaultdict(int))
-    bg = defaultdict(lambda: defaultdict(int))
+    # Bygg dag -> projekt -> {fg, bg} intervalllistor + dag -> alla intervall (för span)
+    day_proj = defaultdict(lambda: defaultdict(lambda: {"fg": [], "bg": []}))
+    day_all  = defaultdict(list)
+
     for r in all_rows:
+        day   = r["started_at"][:10]
+        ts_s  = to_ts(r["started_at"])
+        ts_e  = to_ts(r["ended_at"])
+        if ts_e <= ts_s:
+            continue
+        # Klipp perioder som sträcker sig över midnatt till dagsgränsen
+        midnight = to_ts(day + "T23:59:59") + 1
+        ts_e = min(ts_e, midnight)
+
+        day_all[day].append((ts_s, ts_e))
+
         proj = _match_row_project(r, keywords)
         if not proj:
             continue
-        day = r["started_at"][:10]
-        if r["is_active"]:
-            fg[proj][day] += r["duration_sec"]
-        else:
-            bg[proj][day] += r["duration_sec"]
+        key = "fg" if r["is_active"] else "bg"
+        day_proj[day][proj][key].append((ts_s, ts_e))
 
+    all_projects = {proj for dp in day_proj.values() for proj in dp}
     result = []
-    for proj in sorted(set(list(fg.keys()) + list(bg.keys()))):
+    for proj in sorted(all_projects):
         day_totals = {}
         for day in days:
-            weighted = fg[proj][day] + bg[proj][day] * PTV
-            capped   = min(weighted, day_cap.get(day, weighted))
-            day_totals[day] = int(capped)
+            pd = day_proj.get(day, {}).get(proj)
+            if not pd:
+                day_totals[day] = 0
+                continue
+
+            fg_merged = _merge_intervals(pd["fg"])
+            bg_only   = _subtract_intervals(_merge_intervals(pd["bg"]), fg_merged)
+            weighted  = _sum_intervals(fg_merged) + _sum_intervals(bg_only) * PTV
+
+            # Dag-tak = union av alla perioder den dagen (exkl. pauser/sleep)
+            day_span = _sum_intervals(_merge_intervals(day_all.get(day, [])))
+            day_totals[day] = int(min(weighted, day_span))
+
         result.append({
             "project": proj,
             "name":    registry.get(proj, ""),

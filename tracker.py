@@ -115,7 +115,7 @@ def _enum_windows_inner():
         exe = _exe_for_pid(pid.value)
         proc = os.path.basename(exe) if exe else "unknown"
         if proc not in results:
-            results[proc] = (proc, title, exe)
+            results[proc] = (proc, title, exe, pid.value)
         return True
 
     CB = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
@@ -190,6 +190,35 @@ def get_document_path(pid, title):
         return future.result(timeout=2)
     except Exception:
         return None
+
+
+# Program där doc-path-sökning inte är meningsfull
+_NO_DOC_PATH_PROCS = BROWSER_PROCS | {
+    "ms-teams.exe", "slack.exe", "zoom.exe", "webexmta.exe",
+    "olk.exe", "outlook.exe", "explorer.exe", "windowsterminal.exe",
+    "cmd.exe", "powershell.exe", "svchost.exe", "taskhostw.exe",
+    "applicationframehost.exe", "textinputhost.exe", "snippingtool.exe",
+    "systemsettings.exe", "searchapp.exe", "startmenuexperiencehost.exe",
+}
+
+# Cache: (proc, title) -> sökväg eller None
+_bg_doc_cache: dict = {}
+
+
+def get_bg_document_path(pid, proc, title):
+    """Hämtar dokumentsökväg för bakgrundsfönster med cache och kort timeout."""
+    if proc.lower() in _NO_DOC_PATH_PROCS:
+        return None
+    key = (proc, title)
+    if key in _bg_doc_cache:
+        return _bg_doc_cache[key]
+    try:
+        future = _executor.submit(_get_doc_path, pid, title)
+        result = future.result(timeout=0.5)
+    except Exception:
+        result = None
+    _bg_doc_cache[key] = result
+    return result
 
 
 # ── Webbläsarhistorik ─────────────────────────────────────────
@@ -499,7 +528,10 @@ def run():
             current = {}
             for proc in visible_procs:
                 info = visible_info[proc]
-                current[proc] = (info[1], info[2], None)
+                # info = (proc, title, exe, pid)
+                bg_title, bg_exe, bg_pid = info[1], info[2], info[3]
+                bg_url = get_bg_document_path(bg_pid, proc, bg_title)
+                current[proc] = (bg_title, bg_exe, bg_url)
             if active_name:
                 current[active_name] = (active_title, active_exe, active_url)
 
@@ -514,6 +546,7 @@ def run():
                     flush_period(conn, session_id, proc,
                                  open_title[proc], open_exe[proc], open_url[proc],
                                  open_since[proc], now, is_active=(proc == active_proc))
+                    _bg_doc_cache.pop((proc, open_title[proc]), None)
                     open_since[proc] = now
                     open_title[proc] = title
                     open_exe[proc]   = exe
