@@ -403,9 +403,9 @@ a.row-link:hover{opacity:1;text-decoration:underline}
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('dash-from','dash-to','today',loadDashboard)">Idag</button>
         <button class="btn-quick" onclick="setQuick('dash-from','dash-to','yesterday',loadDashboard)">Igår</button>
-        <button class="btn-quick" onclick="stepWeek('dash',-1,loadDashboard)">←</button>
+        <button class="btn-quick" onclick="stepRange('dash',-1,loadDashboard)">←</button>
         <button class="btn-quick" id="dash-week-btn" onclick="setQuick('dash-from','dash-to','week',loadDashboard)">V?</button>
-        <button class="btn-quick" onclick="stepWeek('dash',1,loadDashboard)">→</button>
+        <button class="btn-quick" onclick="stepRange('dash',1,loadDashboard)">→</button>
       </div>
       <div class="prog-filter-btn">
         <button class="btn btn-ghost" onclick="openProgFilter('dashboard')">⊞ Program<span id="prog-filter-count-dashboard"></span></button>
@@ -474,9 +474,9 @@ a.row-link:hover{opacity:1;text-decoration:underline}
       <div class="quick-dates">
         <button class="btn-quick" onclick="setQuick('per-from','per-to','today',()=>loadPeriods(1))">Idag</button>
         <button class="btn-quick" onclick="setQuick('per-from','per-to','yesterday',()=>loadPeriods(1))">Igår</button>
-        <button class="btn-quick" onclick="stepWeek('per',-1,()=>loadPeriods(1))">←</button>
+        <button class="btn-quick" onclick="stepRange('per',-1,()=>loadPeriods(1))">←</button>
         <button class="btn-quick" id="per-week-btn" onclick="setQuick('per-from','per-to','week',()=>loadPeriods(1))">V?</button>
-        <button class="btn-quick" onclick="stepWeek('per',1,()=>loadPeriods(1))">→</button>
+        <button class="btn-quick" onclick="stepRange('per',1,()=>loadPeriods(1))">→</button>
       </div>
       <label>Sök</label><input type="text" id="per-search" placeholder="program..." style="width:180px">
       <select id="per-active">
@@ -1187,7 +1187,8 @@ const HELP = {
       <p>Ger dig en snabb överblick över din aktivitet för vald tidsperiod.</p>
       <ul>
         <li><strong>KPI-kort</strong> – total aktiv tid, antal program och sessioner</li>
-        <li><strong>Tidsfördelning</strong> – stapeldiagram per program</li>
+        <li><strong>Topp program</strong> – stapeldiagram med mest använda program</li>
+        <li><strong>Aktiv tid per timme</strong> – visar när på dagen du var aktiv</li>
         <li><strong>Datumväljare</strong> – filtrera på dag, vecka eller eget intervall</li>
         <li><strong>Program-filter</strong> – dölj program du inte vill räkna med</li>
       </ul>`,
@@ -1198,8 +1199,8 @@ const HELP = {
       <p>Visar vad som händer på din dator just nu i realtid.</p>
       <ul>
         <li>Uppdateras automatiskt var 5:e sekund</li>
-        <li>Visar aktivt fönster och alla öppna program</li>
-        <li>Tiden räknas upp löpande för varje program</li>
+        <li>Visar aktivt fönster och alla öppna program med pågående tid</li>
+        <li>Program-filter döljer program du inte vill följa</li>
       </ul>`,
   },
   periods: {
@@ -1208,9 +1209,10 @@ const HELP = {
       <p>Detaljerad lista över alla registrerade aktivitetsperioder.</p>
       <ul>
         <li>Sök på programnamn eller fönstertext</li>
-        <li>Filtrera på datum, program och aktiv/inaktiv</li>
+        <li>Filtrera på datum, projekt, program och aktiv/bakgrund</li>
         <li>Sortera på valfri kolumn</li>
         <li>Exportera till CSV via knappen uppe till höger</li>
+        <li>Projektsammanfattningskort visas när ett projekt är valt</li>
       </ul>`,
   },
   apps: {
@@ -1218,9 +1220,10 @@ const HELP = {
     body: `
       <p>Sammanställning av total tid per program för vald period.</p>
       <ul>
-        <li>Visar procentandel av total aktiv tid</li>
-        <li>Använd program-filtret för att exkludera bakgrundsprogram</li>
-        <li>Bra för att förstå var arbetstiden faktiskt tar vägen</li>
+        <li>Filtrera på projekt för att se tid kopplad till ett specifikt projekt</li>
+        <li>Växla mellan aktivt fönster, bakgrund eller båda</li>
+        <li>Expandera en rad för att se fönsterrubriker och klickbara URL:er</li>
+        <li>Program-filter exkluderar program du inte vill räkna med</li>
       </ul>`,
   },
   sessions: {
@@ -1228,7 +1231,7 @@ const HELP = {
     body: `
       <p>En session är en sammanhängande arbetsperiod – från att du sätter dig vid datorn till att du låser den eller stänger av.</p>
       <ul>
-        <li>Visar start, slut och total tid per session</li>
+        <li>Visar start, slut, total tid och antal perioder per session</li>
         <li>Hjälper dig se hur länge du jobbade utan avbrott</li>
         <li>Nya sessioner skapas automatiskt efter viloläge</li>
       </ul>`,
@@ -1236,13 +1239,16 @@ const HELP = {
   gantt: {
     title: '▤ Tidslinje',
     body: `
-      <p>Visar din aktivitet som ett Gantt-diagram över dagen.</p>
+      <p>Visar din aktivitet som ett Gantt-diagram. Nedanför diagrammet finns tre kollapsbara sektioner.</p>
       <ul>
-        <li>Varje rad är ett program, varje block är en period</li>
-        <li>Hovra över ett block för att se detaljer</li>
-        <li>Bra för att se mönster och pauser under dagen</li>
-        <li>Filtrera bort program du inte vill se</li>
-      </ul>`,
+        <li>Varje rad är ett program, varje block är en period – hovra för detaljer</li>
+        <li>Klicka på en rad för att se fönsterrubriker</li>
+        <li>Dra i diagrammet för att panorera; klicka på ett datum i tidsaxeln för att zooma till den dagen</li>
+        <li>Filtrera på projekt eller program</li>
+      </ul>
+      <p><strong>Tidsredovisning</strong> – förslag på tid per projekt och dag, upprundat till närmaste halvtimme.</p>
+      <p><strong>Planering</strong> – teamets resursplanering från Oaks Excel-fil.</p>
+      <p><strong>Besökta platser</strong> – GPS-loggning om platsspårning är aktiverat i Inställningar.</p>`,
   },
   ai: {
     title: '◈ Maj-Britt',
@@ -1250,11 +1256,12 @@ const HELP = {
       <p>Din personliga AI-assistent som känner till din aktivitetsdata.</p>
       <ul>
         <li>Ställ frågor om din arbetstid, projekt och vanor</li>
-        <li>Använder lokal AI (Ollama) eller Anthropic Claude</li>
-        <li>All data stannar på din dator vid lokal AI</li>
+        <li><strong>Ollama</strong> – lokal AI, gratis, all data stannar på datorn</li>
+        <li><strong>OpenAI / ChatGPT</strong> – kräver API-nyckel, data skickas till OpenAI</li>
+        <li><strong>Anthropic Claude</strong> – kräver API-nyckel, data skickas till Anthropic</li>
         <li>Ge tumme upp/ner på svaren för att hjälpa Maj-Britt bli bättre</li>
       </ul>
-      <p>Välj leverantör och modell i inställningarna överst på sidan.</p>`,
+      <p>Välj källa och modell i inställningarna överst på sidan.</p>`,
   },
   feedback: {
     title: '✉ Feedback',
@@ -1262,9 +1269,8 @@ const HELP = {
       <p>Skicka synpunkter, felrapporter eller idéer direkt till utvecklaren.</p>
       <ul>
         <li>Välj kategori – idé, fel, beröm eller övrigt</li>
-        <li>Din mailapp öppnas med ett färdigifyllt meddelande</li>
+        <li>Feedback skickas direkt via e-post utan att öppna din mailapp</li>
         <li>Diagnostikinformation bifogas automatiskt för att underlätta felsökning</li>
-        <li>Inget skickas utan att du godkänner det i din mailapp</li>
       </ul>`,
   },
 };

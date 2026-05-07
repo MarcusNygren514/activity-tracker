@@ -1,13 +1,17 @@
 # Ändringslogg – Activity Tracker
 
-## v0.18b (ej släppt)
+## v0.18b (2026-05-07)
 - Buggfix: tidslinje-zoom klickade en dag fel pga UTC-konvertering (lokal tidszon används nu)
 - Program-vyn filtrerar nu programlistan på valt projekt (tidigare visades alla program oavsett projekt)
 - Feedback skickas nu direkt via backend (Gmail) utan att öppna mailappen – fallback till mailto om backend ej nås
-- Självläkande start: stale lock-fil rensas automatiskt vid uppstart om ingen annan instans faktiskt körs
+- Självläkande start: stale lock-fil rensas automatiskt vid uppstart om ingen annan instans faktiskt körs; start.bat försöker upp till 3 gånger om appen inte svarar
 - Maj-Britt: stöd för OpenAI/ChatGPT som AI-källa (gpt-4o, gpt-4o-mini m.fl.)
 - Maj-Britt: visar tydlig guide om ingen AI-källa är konfigurerad (Ollama ej installerat och ingen API-nyckel)
-- Tidsredovisningsförslag under tidslinjen: summerad förgrundsid per projekt och dag, upprundat till närmaste halvtimme, med projektnamn från planeringsfilen
+- Tidsredovisningsförslag under tidslinjen: intervallbaserad beräkning med PTV (Passivtidvikt 25%), upprundat uppåt till närmaste halvtimme, projektnamn från planeringsfilen; kollapsbar sektion
+- Förbättrad projektmatchning: bakgrundsfönster identifieras nu via öppna filsökvägar (psutil) för bättre projekttillhörighet
+- Buggfix: S-projekt (S12345) identifierades inte i Maj-Britts kontext
+- Buggfix: pilknappar i Dashboard och Perioder stegar nu korrekt – en dag om en dag är vald, en vecka om en vecka är vald
+- Hjälptexter för alla flikar genomgångna och uppdaterade
 
 ## v0.17b (2026-04-23)
 - Program-vyn: aktiv/bakgrund-filter uppdaterar listan direkt utan att klicka Uppdatera

@@ -78,7 +78,7 @@ Vid låsfel: kontrollerar via WMI om en verklig pythonw-instans kör `tray_app.p
 `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ADMIN_EMAIL`, `GITHUB_TOKEN`, `GITHUB_REPO`, `DB_PATH`
 
 ## Aktuellt version
-`v0.17b` (släppt 2026-04-23). Se `CHANGELOG.md` för fullständig historik.
+`v0.18b` (släppt 2026-05-07). Se `CHANGELOG.md` för fullständig historik.
 
 ## Autostart
 Appen registreras för autostart via Windows-registret:
