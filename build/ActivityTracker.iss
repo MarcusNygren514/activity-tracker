@@ -4,7 +4,7 @@
 ; Rör INTE dataföldern C:\Users\{user}\activity_tracker\
 
 #define AppName "Activity Tracker"
-#define AppVersion "v0.17b"
+#define AppVersion "v0.18b"
 #define AppPublisher "Oaks"
 #define AppExeName "ActivityTracker.exe"
 #define SourceDir "C:\activity_tracker\build\dist\ActivityTracker"
