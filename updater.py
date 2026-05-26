@@ -5,6 +5,7 @@ Installerar ALDRIG utan att användaren godkänner via tray-menyn.
 """
 
 import os
+import re
 import json
 import time
 import logging
@@ -54,8 +55,8 @@ def _notify(title: str, msg: str):
 
 
 def _version_tuple(v: str):
-    """'v1.2.3' → (1, 2, 3)"""
-    return tuple(int(x) for x in v.lstrip("v").split(".") if x.isdigit())
+    """'v0.19b' → (0, 19), 'v1.2.3' → (1, 2, 3)"""
+    return tuple(int(x) for x in re.findall(r'\d+', v))
 
 
 def _load_skipped() -> set:
