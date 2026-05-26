@@ -1,6 +1,6 @@
 # Ändringslogg – Activity Tracker
 
-## v0.19b (ej släppt)
+## v0.19b (2026-05-26)
 - Buggfix: markeringen för aktuell vecka i planeringsdelen uppdateras nu korrekt vid varje besök i Tidslinje-fliken (tidigare frös den om appen lämnades öppen över ett veckoskifte)
 - Buggfix: positioner som kräver >200 km/h sedan föregående logg kastas bort (skydd mot helt orimliga WiFi-felläsningar)
 
