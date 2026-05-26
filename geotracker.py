@@ -23,6 +23,10 @@ DB_PATH = Path.home() / "activity_tracker" / "activity.db"
 # Minsta förflyttning (meter) för att en ny position skall loggas
 MIN_DISTANCE_M = 150
 
+# Max rimlig hastighet (km/h) – positioner som kräver högre hastighet
+# sedan förra loggen betraktas som felaktiga GPS-avläsningar och kastas bort
+MAX_SPEED_KMH = 200
+
 _stop_event   = threading.Event()
 _thread       = None
 _enabled      = False
@@ -85,15 +89,20 @@ def _ensure_table():
     conn = sqlite3.connect(str(DB_PATH))
     conn.executescript("""
         CREATE TABLE IF NOT EXISTS locations (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            logged_at   TEXT NOT NULL,
-            latitude    REAL NOT NULL,
-            longitude   REAL NOT NULL,
-            accuracy_m  REAL,
-            address     TEXT
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            logged_at    TEXT NOT NULL,
+            latitude     REAL NOT NULL,
+            longitude    REAL NOT NULL,
+            accuracy_m   REAL,
+            address      TEXT,
+            is_suspicious INTEGER DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_locations_time ON locations(logged_at);
     """)
+    # Migrera befintlig tabell om kolumnen saknas
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(locations)").fetchall()]
+    if "is_suspicious" not in cols:
+        conn.execute("ALTER TABLE locations ADD COLUMN is_suspicious INTEGER DEFAULT 0")
     conn.commit()
     conn.close()
 
@@ -109,15 +118,17 @@ def _save(lat, lon, accuracy, address):
     conn.close()
 
 
-def _last_position() -> tuple[float, float] | None:
-    """Returnerar (lat, lon) för senast loggade position, eller None."""
+
+
+def _last_position() -> tuple[float, float, str] | None:
+    """Returnerar (lat, lon, logged_at) för senast loggade position, eller None."""
     try:
         conn = sqlite3.connect(str(DB_PATH))
         row = conn.execute(
-            "SELECT latitude, longitude FROM locations ORDER BY logged_at DESC LIMIT 1"
+            "SELECT latitude, longitude, logged_at FROM locations ORDER BY logged_at DESC LIMIT 1"
         ).fetchone()
         conn.close()
-        return (row[0], row[1]) if row else None
+        return (row[0], row[1], row[2]) if row else None
     except Exception:
         return None
 
@@ -134,12 +145,29 @@ def _run_loop(interval_min: int):
             if result:
                 lat, lon, acc = result
                 last = _last_position()
-                if last is None or _distance_m(last[0], last[1], lat, lon) >= MIN_DISTANCE_M:
-                    address = _reverse_geocode(lat, lon)
-                    _save(lat, lon, acc, address)
-                    log.info(f"Position loggad: {address} ({lat:.5f}, {lon:.5f}, ±{acc:.0f}m)")
-                else:
-                    log.debug(f"Position oförändrad – inget loggas")
+                if last is not None:
+                    dist_m = _distance_m(last[0], last[1], lat, lon)
+                    if dist_m < MIN_DISTANCE_M:
+                        log.debug("Position oförändrad – inget loggas")
+                        _stop_event.wait(interval_min * 60)
+                        continue
+                    # Hastighetskontroll: kasta bort orimliga GPS-hopp
+                    try:
+                        elapsed_h = (datetime.now() - datetime.fromisoformat(last[2])).total_seconds() / 3600
+                        if elapsed_h > 0:
+                            speed_kmh = (dist_m / 1000) / elapsed_h
+                            if speed_kmh > MAX_SPEED_KMH:
+                                log.warning(
+                                    f"GPS-hopp ignorerat: {dist_m/1000:.1f} km på {elapsed_h*60:.0f} min "
+                                    f"({speed_kmh:.0f} km/h) – sannolikt felaktig avläsning"
+                                )
+                                _stop_event.wait(interval_min * 60)
+                                continue
+                    except Exception:
+                        pass
+                address = _reverse_geocode(lat, lon)
+                _save(lat, lon, acc, address)
+                log.info(f"Position loggad: {address} ({lat:.5f}, {lon:.5f}, ±{acc:.0f}m)")
         except Exception as e:
             log.warning(f"Geotracker-fel: {e}")
 

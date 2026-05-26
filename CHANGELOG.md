@@ -1,5 +1,9 @@
 # Ändringslogg – Activity Tracker
 
+## v0.19b (ej släppt)
+- Buggfix: markeringen för aktuell vecka i planeringsdelen uppdateras nu korrekt vid varje besök i Tidslinje-fliken (tidigare frös den om appen lämnades öppen över ett veckoskifte)
+- Buggfix: positioner som kräver >200 km/h sedan föregående logg kastas bort (skydd mot helt orimliga WiFi-felläsningar)
+
 ## v0.18b (2026-05-07)
 - Buggfix: tidslinje-zoom klickade en dag fel pga UTC-konvertering (lokal tidszon används nu)
 - Program-vyn filtrerar nu programlistan på valt projekt (tidigare visades alla program oavsett projekt)

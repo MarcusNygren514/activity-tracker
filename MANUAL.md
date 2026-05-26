@@ -1,6 +1,6 @@
 # Activity Tracker – Användarmanual
 
-> Senast uppdaterad: v0.18b (2026-05-07)
+> Senast uppdaterad: v0.19b (2026-05-26)
 
 ---
 
@@ -22,7 +22,7 @@
 
 **Appen startar nu automatiskt** – ett litet ikon visas i systemfältet (nere till höger, vid klockan).
 
-> Activity Tracker startar automatiskt vid varje Windows-inloggning. Inget behöver göras för att aktivera det.
+> **Activity Tracker startar automatiskt** vid varje Windows-inloggning – du behöver aldrig starta den manuellt. Den körs tyst i bakgrunden och loggar din aktivitet hela arbetsdagen.
 
 ---
 
@@ -48,7 +48,7 @@ Registreringen används för att:
 - Klicka på **tray-ikonen** (nere till höger), eller
 - Öppna en webbläsare och gå till **http://localhost:5757**
 
-Gränssnittet har sju flikar:
+Gränssnittet har nio flikar:
 
 | Flik | Vad den visar |
 |---|---|
@@ -59,8 +59,10 @@ Gränssnittet har sju flikar:
 | **Sessioner** | Sammanhängande arbetspass |
 | **Tidslinje** | Gantt-diagram + tidsredovisningsförslag |
 | **Maj-Britt** | AI-assistent – ställ frågor om din aktivitetsdata |
+| **Feedback** | Skicka synpunkter eller felrapporter till utvecklaren |
+| **Inställningar** | Platsspårning och resursplanering |
 
-Klicka på **?** bredvid varje flik för en kort beskrivning av innehållet.
+Klicka på **?** bredvid en flik för en kort beskrivning av innehållet.
 
 ---
 

@@ -25,6 +25,7 @@ sys.path.insert(0, str(_app_dir))
 import updater
 import tracker
 import web_app
+import screenshot_watcher
 
 # Logga till fil – fångar kraschar som pythonw.exe annars sväljer
 _LOG_FILE = Path.home() / "activity_tracker" / "tray.log"
@@ -222,18 +223,16 @@ def main():
     start_tracker()
     time.sleep(1)
     start_web()
+    screenshot_watcher.start()
     time.sleep(1)
 
     # Watchdog som startar om trackern vid krasch/sleep
     wd = threading.Thread(target=watchdog, daemon=True)
     wd.start()
 
-    # OTA-checker (aktiveras när BACKEND_URL sätts i web_app)
+    # OTA-checker – kollar GitHub Releases direkt
     try:
-        updater.configure(
-            backend_url=web_app.BACKEND_URL,
-            current_version=web_app.VERSION,
-        )
+        updater.configure(current_version=web_app.VERSION)
         updater.start_background_checker()
     except Exception as e:
         logging.warning(f"OTA-checker kunde inte startas: {e}")

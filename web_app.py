@@ -37,7 +37,7 @@ _PS_CODE_RE = re.compile(r'[PS]\d{5}')
 # Webbläsarprocesser – synkroniserat med tracker.py
 BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
-VERSION         = "v0.18b"
+VERSION         = "v0.19b"
 DB_PATH         = Path.home() / "activity_tracker" / "activity.db"
 CONFIG_PATH     = Path.home() / "activity_tracker" / "app_config.json"
 PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "planning_cache.json"
@@ -375,7 +375,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div class="nav-item" data-page="gantt" onclick="showPage(this)"><span class="nav-icon">▤</span> Tidslinje<button class="nav-help" onclick="event.stopPropagation();showHelp('gantt')" title="Hjälp">?</button></div>
     <div class="nav-item" data-page="ai" onclick="showPage(this)"><span class="nav-icon">◈</span> Maj-Britt<button class="nav-help" onclick="event.stopPropagation();showHelp('ai')" title="Hjälp">?</button></div>
     <div class="nav-item" data-page="feedback" onclick="showPage(this)"><span class="nav-icon">✉</span> Feedback<button class="nav-help" onclick="event.stopPropagation();showHelp('feedback')" title="Hjälp">?</button></div>
-    <div class="nav-item" data-page="plansettings" onclick="showPage(this)"><span class="nav-icon">⚙</span> Inställningar</div>
+    <div class="nav-item" data-page="plansettings" onclick="showPage(this)"><span class="nav-icon">⚙</span> Inställningar<button class="nav-help" onclick="event.stopPropagation();showHelp('plansettings')" title="Hjälp">?</button></div>
     <div class="sidebar-footer"><span class="status-dot"></span>Tracker aktiv</div>
   </div>
 </nav>
@@ -1273,6 +1273,16 @@ const HELP = {
         <li>Diagnostikinformation bifogas automatiskt för att underlätta felsökning</li>
       </ul>`,
   },
+  plansettings: {
+    title: '⚙ Inställningar',
+    body: `
+      <p>Anpassa Activity Tracker efter dina behov.</p>
+      <ul>
+        <li><strong>Resursplanering</strong> – koppla mot Oaks Resursplanering.xlsm för att se planerade aktiviteter i Tidslinje-fliken. Ange sökväg och ditt namn i RESURS-kolumnen</li>
+        <li><strong>Platsloggning</strong> – loggar din position via Windows Location API och visar besökta platser i Tidslinje-fliken. All data stannar lokalt på din dator</li>
+      </ul>
+      <p>Tema väljer du med knapparna uppe till höger. AI-källa väljer du i Maj-Britt-fliken.</p>`,
+  },
 };
 
 function showHelp(page) {
@@ -1787,7 +1797,14 @@ async function savePlanSettings() {
 async function autoLoadPlanning() {
   const cfg = await fetch('/api/planning-config').then(r => r.json());
   document.getElementById('team-section').style.display = cfg.enabled ? '' : 'none';
-  if (cfg.enabled) { loadPlanning(); if (!teamPlanningData) loadTeamPlanning(); }
+  if (cfg.enabled) {
+    loadPlanning();
+    if (!teamPlanningData) {
+      loadTeamPlanning();
+    } else {
+      renderTeamPlanning(teamPlanningData, document.getElementById('gantt-project')?.value || '');
+    }
+  }
 
   const geoCfg = await fetch('/api/geo-config').then(r => r.json());
   document.getElementById('geo-section').style.display = geoCfg.enabled ? '' : 'none';

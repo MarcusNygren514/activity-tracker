@@ -1,6 +1,6 @@
 """
 Activity Tracker – OTA-uppdaterare
-Kollar ny version mot backenden en gång per dag.
+Kollar ny version direkt mot GitHub Releases API en gång per dag.
 Installerar ALDRIG utan att användaren godkänner via tray-menyn.
 """
 
@@ -16,27 +16,28 @@ from pathlib import Path
 
 log = logging.getLogger("updater")
 
-# ── Konfiguration (sätts från tray_app) ──────────────────────────
-BACKEND_URL     = ""
+# ── Konfiguration ─────────────────────────────────────────────────
+GITHUB_REPO     = "MarcusNygren514/activity-tracker"
 CURRENT_VERSION = ""
 CHECK_INTERVAL  = 86400    # sekunder (1 dygn)
 
-_tray_icon      = None     # pystray-objekt
-_app_dir        = Path(__file__).parent
-_skipped_file   = _app_dir / "skipped_versions.json"
+_GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+
+_tray_icon    = None
+_app_dir      = Path(__file__).parent
+_skipped_file = _app_dir / "skipped_versions.json"
 
 # ── Väntande uppdatering ──────────────────────────────────────────
-_pending = None        # {"version": "v1.1", "url": "...", "notes": "..."}
+_pending      = None        # {"version": "v1.1", "url": "...", "notes": "..."}
 _pending_lock = threading.Lock()
 
 # ── Callbacks (sätts från tray_app) ──────────────────────────────
-on_update_available = None   # kallas när ny version hittats
-on_update_cleared   = None   # kallas när uppdatering installerats/hoppats över
+on_update_available = None
+on_update_cleared   = None
 
 
-def configure(backend_url: str, current_version: str, tray_icon=None, app_dir: Path | None = None):
-    global BACKEND_URL, CURRENT_VERSION, _tray_icon, _app_dir, _skipped_file
-    BACKEND_URL     = backend_url.rstrip("/")
+def configure(current_version: str, tray_icon=None, app_dir: Path | None = None):
+    global CURRENT_VERSION, _tray_icon, _app_dir, _skipped_file
     CURRENT_VERSION = current_version
     _tray_icon      = tray_icon
     if app_dir:
@@ -72,13 +73,11 @@ def _save_skipped(versions: set):
 
 
 def get_pending() -> dict | None:
-    """Returnerar info om väntande uppdatering, eller None."""
     with _pending_lock:
         return _pending
 
 
 def skip_pending():
-    """Användaren hoppar över den aktuella versionen – visas inte igen."""
     global _pending
     with _pending_lock:
         if _pending:
@@ -95,7 +94,6 @@ def skip_pending():
 
 
 def install_pending():
-    """Användaren godkänner – laddar ned och installerar."""
     with _pending_lock:
         info = _pending
     if not info:
@@ -108,33 +106,37 @@ def install_pending():
 
 def check_and_update(force: bool = False):
     """
-    Kollar om ny version finns.
+    Kollar om ny version finns via GitHub Releases API.
     Sätter _pending och anropar on_update_available – installerar INTE automatiskt.
     """
     global _pending
 
-    if not BACKEND_URL:
-        log.warning("BACKEND_URL inte satt – hoppar över uppdateringskontroll")
-        return
-
     try:
         req = urllib.request.Request(
-            f"{BACKEND_URL}/version", headers={"User-Agent": "ActivityTracker"})
+            _GITHUB_API,
+            headers={
+                "User-Agent":  "ActivityTracker",
+                "Accept":      "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+            },
+        )
         with urllib.request.urlopen(req, timeout=15) as resp:
             data = json.loads(resp.read())
     except Exception as e:
         log.warning(f"Kunde inte kontrollera version: {e}")
         return
 
-    if not data.get("ok"):
-        return
-
-    latest  = data.get("version", "")
-    dl_url  = data.get("download_url", "")
-    notes   = data.get("notes", "")
-    size_b  = data.get("size", 0)
+    latest = data.get("tag_name", "")
+    notes  = data.get("body", "")
+    asset  = next(
+        (a for a in data.get("assets", []) if a["name"].endswith(".exe")),
+        None,
+    )
+    dl_url = asset["browser_download_url"] if asset else None
+    size_b = asset["size"] if asset else 0
 
     if not latest or not dl_url:
+        log.warning("GitHub-svaret saknar version eller nedladdningslänk")
         return
 
     try:
@@ -150,11 +152,10 @@ def check_and_update(force: bool = False):
 
     log.info(f"Ny version hittad: {latest} (nuvarande: {CURRENT_VERSION})")
 
-    full_url = f"{BACKEND_URL}{dl_url}" if dl_url.startswith("/") else dl_url
-    size_mb  = f"{size_b / 1_048_576:.1f} MB" if size_b else ""
+    size_mb = f"{size_b / 1_048_576:.1f} MB" if size_b else ""
 
     with _pending_lock:
-        _pending = {"version": latest, "url": full_url, "notes": notes, "size_mb": size_mb}
+        _pending = {"version": latest, "url": dl_url, "notes": notes, "size_mb": size_mb}
 
     _notify(
         "Uppdatering tillgänglig",
@@ -213,4 +214,4 @@ def start_background_checker():
 
     t = threading.Thread(target=_loop, daemon=True, name="OTA-checker")
     t.start()
-    log.info("OTA-checker startad")
+    log.info("OTA-checker startad (GitHub API direkt)")
