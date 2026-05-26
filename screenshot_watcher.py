@@ -41,15 +41,11 @@ log = logging.getLogger(__name__)
 
 
 def _sanitize(name: str, max_len: int = 80) -> str:
-    """Tar bort ogiltiga filnamnstecken och trunkerar."""
     name = _INVALID_CHARS.sub("-", name).strip(" -.")
     return name[:max_len] if name else "Screenshot"
 
 
-def _new_name(window_title: str, suffix: str) -> str:
-    """Bygger filnamn: '[Fönsternamn] YYYY-MM-DD HH-MM-SS[suffix]'"""
-    ts   = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-    base = _sanitize(window_title) if window_title else "Screenshot"
+def _new_name(base: str, ts: str, suffix: str) -> str:
     return f"{base} {ts}{suffix}"
 
 
@@ -69,18 +65,16 @@ def _watch():
         known      = current
 
         for path in new_files:
-            # Ignorera filer vi redan döpt om (innehåller tidsstämpel-mönstret)
             if re.search(r'\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}', path.stem):
                 continue
 
-            title = tracker.get_last_window_title()
-            new_filename = _new_name(title, path.suffix)
-            new_path     = path.parent / new_filename
+            base = _sanitize(tracker.get_last_window_title())
+            ts   = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+            new_path = path.parent / _new_name(base, ts, path.suffix)
 
-            # Undvik kollision
             counter = 1
-            while new_path.exists():
-                new_path = path.parent / _new_name(title, f" ({counter}){path.suffix}")
+            while new_path.exists() and counter <= 100:
+                new_path = path.parent / _new_name(base, ts, f" ({counter}){path.suffix}")
                 counter += 1
 
             try:

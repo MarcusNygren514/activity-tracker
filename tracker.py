@@ -49,17 +49,11 @@ _stop_event = threading.Event()
 
 # Senast kända aktivt fönster (exkl. skärmklippsverktyget) – läses av screenshot_watcher
 _last_non_snip_title: str = ""
-_last_non_snip_proc: str = ""
 _SNIP_PROCS = {"snippingtool.exe", "screenclipping.exe", "screensnip.exe"}
 
 
 def get_last_window_title() -> str:
-    """Returnerar titeln på det senast kända aktiva fönstret, exklusive skärmklippsverktyget."""
     return _last_non_snip_title
-
-
-def get_last_window_proc() -> str:
-    return _last_non_snip_proc
 
 
 def stop():
@@ -580,9 +574,8 @@ def run():
                 del open_url[proc]
 
             if active_name and active_name.lower() not in _SNIP_PROCS:
-                global _last_non_snip_title, _last_non_snip_proc
+                global _last_non_snip_title
                 _last_non_snip_title = active_title or ""
-                _last_non_snip_proc  = active_name
 
             active_proc = active_name
             write_live(open_since, open_title, open_url, active_proc)

@@ -55,8 +55,7 @@ def _notify(title: str, msg: str):
 
 
 def _version_tuple(v: str):
-    """'v0.19b' → (0, 19), 'v1.2.3' → (1, 2, 3)"""
-    return tuple(int(x) for x in re.findall(r'\d+', v))
+    return tuple(int(x) for x in re.findall(r'\d+', v)) or (0,)
 
 
 def _load_skipped() -> set:
