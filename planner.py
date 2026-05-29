@@ -16,7 +16,7 @@ from pathlib import Path
 log = logging.getLogger("planner")
 
 _WEEK_RE   = re.compile(r'^V(\d{2})(\d{2})$')
-_PS_CODE_RE = re.compile(r'^([PS]\d{5})')
+_PS_CODE_RE = re.compile(r'^((?:SI|SP|[IPS])\d{5})(?!\d)')
 
 
 def _week_to_dates(year_short: int, week: int):

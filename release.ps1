@@ -21,14 +21,14 @@ Write-Host "Version: $VERSION" -ForegroundColor Cyan
 
 # ── 2. Kontrollera att CHANGELOG har en "(ej släppt)"-post ──────────────────
 $clContent = Get-Content $CHANGELOG -Raw
-if ($clContent -notmatch "## $([regex]::Escape($VERSION)) \(ej släppt\)") {
-    Write-Error "CHANGELOG.md saknar '## $VERSION (ej släppt)' – lägg till releaseposter först"
+if ($clContent -notmatch "## $([regex]::Escape($VERSION)) \(ej sl") {
+    Write-Error "CHANGELOG.md saknar '## $VERSION (ej slappt)' - lagg till releaseposter forst"
     exit 1
 }
 
 # ── 3. Uppdatera datum i CHANGELOG ──────────────────────────────────────────
 $today = Get-Date -Format "yyyy-MM-dd"
-$clContent = $clContent -replace "## $([regex]::Escape($VERSION)) \(ej släppt\)", "## $VERSION ($today)"
+$clContent = $clContent -replace "## $([regex]::Escape($VERSION)) \(ej sl[^)]+\)", "## $VERSION ($today)"
 Set-Content $CHANGELOG $clContent -Encoding UTF8
 Write-Host "CHANGELOG.md: datum satt till $today" -ForegroundColor Green
 

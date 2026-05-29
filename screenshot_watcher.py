@@ -39,6 +39,9 @@ _INVALID_CHARS = re.compile(r'[\\/:*?"<>|\r\n]+')
 
 log = logging.getLogger(__name__)
 
+_stop_event = threading.Event()
+_thread: threading.Thread | None = None
+
 
 def _sanitize(name: str, max_len: int = 80) -> str:
     name = _INVALID_CHARS.sub("-", name).strip(" -.")
@@ -53,8 +56,8 @@ def _watch():
     SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     known = {f for f in SCREENSHOTS_DIR.iterdir() if f.is_file()}
 
-    while True:
-        time.sleep(POLL_INTERVAL)
+    while not _stop_event.is_set():
+        _stop_event.wait(POLL_INTERVAL)
         try:
             current = {f for f in SCREENSHOTS_DIR.iterdir() if f.is_file()}
         except Exception as e:
@@ -89,6 +92,16 @@ def _watch():
 
 def start():
     """Startar screenshot-watchern i en bakgrundstråd."""
-    t = threading.Thread(target=_watch, daemon=True, name="ScreenshotWatcher")
-    t.start()
+    global _thread
+    if _thread and _thread.is_alive():
+        return
+    _stop_event.clear()
+    _thread = threading.Thread(target=_watch, daemon=True, name="ScreenshotWatcher")
+    _thread.start()
     log.info("[ScreenshotWatcher] Startad, bevakar: %s", SCREENSHOTS_DIR)
+
+
+def stop():
+    """Stoppar screenshot-watchern."""
+    _stop_event.set()
+    log.info("[ScreenshotWatcher] Stoppad.")

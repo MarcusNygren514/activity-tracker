@@ -9,6 +9,7 @@ import csv
 import io
 import json
 import os
+import time
 import urllib.request
 import urllib.error
 from collections import defaultdict
@@ -31,13 +32,18 @@ try:
 except ImportError:
     _geotracker = None
 
-# Projektkodsmönster: P eller S följt av exakt 5 siffror
-_PS_CODE_RE = re.compile(r'[PS]\d{5}')
+try:
+    import screenshot_watcher as _screenshot_watcher
+except ImportError:
+    _screenshot_watcher = None
+
+# Projektkodsmönster: Göteborg (P/S + 5 siffror) och Stockholm (I/SI/SP + 5 siffror)
+_PS_CODE_RE = re.compile(r'\b(?:SI|SP|[IPS])\d{5}(?!\d)')
 
 # Webbläsarprocesser – synkroniserat med tracker.py
 BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
-VERSION         = "v0.19b"
+VERSION         = "v0.20b"
 DB_PATH         = Path.home() / "activity_tracker" / "activity.db"
 CONFIG_PATH     = Path.home() / "activity_tracker" / "app_config.json"
 PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "planning_cache.json"
@@ -373,7 +379,7 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div class="nav-item" data-page="apps" onclick="showPage(this)"><span class="nav-icon">◫</span> Program<button class="nav-help" onclick="event.stopPropagation();showHelp('apps')" title="Hjälp">?</button></div>
     <div class="nav-item" data-page="sessions" onclick="showPage(this)"><span class="nav-icon">≡</span> Sessioner<button class="nav-help" onclick="event.stopPropagation();showHelp('sessions')" title="Hjälp">?</button></div>
     <div class="nav-item" data-page="gantt" onclick="showPage(this)"><span class="nav-icon">▤</span> Tidslinje<button class="nav-help" onclick="event.stopPropagation();showHelp('gantt')" title="Hjälp">?</button></div>
-    <div class="nav-item" data-page="ai" onclick="showPage(this)"><span class="nav-icon">◈</span> Maj-Britt<button class="nav-help" onclick="event.stopPropagation();showHelp('ai')" title="Hjälp">?</button></div>
+    <!-- Maj-Britt dold tills AI-motor är beslutad -->
     <div class="nav-item" data-page="feedback" onclick="showPage(this)"><span class="nav-icon">✉</span> Feedback<button class="nav-help" onclick="event.stopPropagation();showHelp('feedback')" title="Hjälp">?</button></div>
     <div class="nav-item" data-page="plansettings" onclick="showPage(this)"><span class="nav-icon">⚙</span> Inställningar<button class="nav-help" onclick="event.stopPropagation();showHelp('plansettings')" title="Hjälp">?</button></div>
     <div class="sidebar-footer"><span class="status-dot"></span>Tracker aktiv</div>
@@ -795,11 +801,27 @@ a.row-link:hover{opacity:1;text-decoration:underline}
   <div id="page-plansettings" class="page">
     <h1>Inställningar</h1><p class="subtitle">Anpassa Activity Tracker</p>
     <div style="max-width:560px">
+
+      <h3 style="margin:0 0 8px;font-size:15px">Kontor</h3>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 14px">
+        Välj vilket kontor du tillhör. Inställningen används för att anpassa projektigenkänning.
+      </p>
+      <div style="margin-bottom:8px">
+        <select id="office-select" onchange="saveOfficeSettings()"
+          style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+          padding:8px 12px;color:var(--text);font-size:13px">
+          <option value="goteborg">Göteborg</option>
+          <option value="stockholm">Stockholm</option>
+        </select>
+      </div>
+      <span id="office-save-status" style="font-size:12px;color:var(--muted)"></span>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
+
       <h3 style="margin:0 0 8px;font-size:15px">Resursplanering</h3>
       <p style="color:var(--muted);font-size:13px;margin:0 0 20px">
         Koppla Activity Tracker mot Oaks Resursplanering för att se planerade aktiviteter
-        i Tidslinje-fliken. Filen läses lokalt – inget skickas någonstans.
-        Ange sökvägen till Excel-filen och ditt namn exakt som det står i RESURS-kolumnen.
+        i Tidslinje-fliken. Filen hämtas automatiskt från din OneDrive-synk baserat på kontorsvalet ovan.
       </p>
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
         <label class="toggle-label">
@@ -808,12 +830,29 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         </label>
       </div>
       <div id="plan-fields">
-        <div style="margin-bottom:14px">
-          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Sökväg till Resursplanering.xlsm</label>
-          <input id="plan-file" type="text" placeholder="C:\Users\...\Oaks Resursplanering.xlsm"
+        <input id="plan-file" type="hidden">
+
+        <div id="plan-file-found" style="display:none;margin-bottom:14px">
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Planeringsfil</label>
+          <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg);
+            border:1px solid var(--border);border-radius:var(--r)">
+            <span style="color:#4caf50;flex-shrink:0">✓</span>
+            <span id="plan-file-path" style="font-size:12px;color:var(--muted);overflow:hidden;
+              text-overflow:ellipsis;white-space:nowrap"></span>
+          </div>
+        </div>
+
+        <div id="plan-file-missing" style="display:none;margin-bottom:14px">
+          <div style="padding:10px 14px;background:var(--bg);border:1px solid var(--border);
+            border-radius:var(--r);font-size:12px;color:var(--muted);margin-bottom:10px">
+            ⚠ Planeringsfil hittades inte – kontrollera att SharePoint-biblioteket är synkat i OneDrive.
+          </div>
+          <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Ange sökväg manuellt</label>
+          <input id="plan-file-manual" type="text" placeholder="C:\Users\...\Oaks Resursplanering.xlsm"
             style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
             padding:8px 12px;color:var(--text);font-size:13px;box-sizing:border-box">
         </div>
+
         <div style="margin-bottom:14px">
           <label style="font-size:12px;color:var(--muted);display:block;margin-bottom:6px">Ditt namn i filen (RESURS-kolumnen)</label>
           <input id="plan-resource" type="text" placeholder="Förnamn Efternamn"
@@ -823,6 +862,20 @@ a.row-link:hover{opacity:1;text-decoration:underline}
         <button onclick="savePlanSettings()" class="btn-primary" style="padding:8px 20px">Spara</button>
         <span id="plan-status" style="font-size:12px;color:var(--muted)"></span>
       </div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
+
+      <h3 style="margin:0 0 8px;font-size:15px">Skärmklipp – automatisk namngivning</h3>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 20px">
+        Döper automatiskt om nya skärmdumpar i din Screenshots-mapp med det aktiva fönstrets namn och en tidsstämpel.
+      </p>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <label class="toggle-label">
+          <input type="checkbox" id="screenshot-enabled" onchange="saveScreenshotSettings()">
+          <span>Aktivera automatisk namngivning av skärmdumpar</span>
+        </label>
+      </div>
+      <span id="screenshot-save-status" style="font-size:12px;color:var(--muted)"></span>
 
       <hr style="border:none;border-top:1px solid var(--border);margin:32px 0">
 
@@ -1175,6 +1228,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (savedNav) showPage(savedNav); else loadDashboard();
   initRegistration();
   initPlanSettings();
+  initOfficeSettings();
+  initScreenshotSettings();
   initGeoSettings();
   initProjectDropdowns();
 });
@@ -1772,19 +1827,42 @@ async function toggleTitles(btn, procEncoded, from, to, active, project='') {
 
 // ── Resursplanering ────────────────────────────────────────────
 
+function _renderPlanFileUI(suggestedPath, savedFile) {
+  const foundEl   = document.getElementById('plan-file-found');
+  const missingEl = document.getElementById('plan-file-missing');
+  const pathEl    = document.getElementById('plan-file-path');
+  const hiddenEl  = document.getElementById('plan-file');
+  if (!foundEl) return;
+  if (suggestedPath) {
+    hiddenEl.value          = suggestedPath;
+    pathEl.textContent      = suggestedPath;
+    foundEl.style.display   = 'block';
+    missingEl.style.display = 'none';
+  } else {
+    foundEl.style.display   = 'none';
+    missingEl.style.display = 'block';
+    if (savedFile) document.getElementById('plan-file-manual').value = savedFile;
+  }
+}
+
 async function initPlanSettings() {
-  const r = await fetch('/api/planning-config');
-  const cfg = await r.json();
-  document.getElementById('plan-enabled').checked  = cfg.enabled;
-  document.getElementById('plan-file').value        = cfg.file;
-  document.getElementById('plan-resource').value    = cfg.resource;
+  const [planCfg, officeCfg] = await Promise.all([
+    fetch('/api/planning-config').then(r => r.json()),
+    fetch('/api/office-config').then(r => r.json()),
+  ]);
+  document.getElementById('plan-enabled').checked = planCfg.enabled;
+  document.getElementById('plan-resource').value  = planCfg.resource;
+  _renderPlanFileUI(officeCfg.suggested_path, planCfg.file);
 }
 
 async function savePlanSettings() {
   const enabled  = document.getElementById('plan-enabled').checked;
-  const file     = document.getElementById('plan-file').value.trim();
   const resource = document.getElementById('plan-resource').value.trim();
   const status   = document.getElementById('plan-status');
+  const manualEl = document.getElementById('plan-file-manual');
+  const file = (manualEl && manualEl.closest('#plan-file-missing').style.display !== 'none')
+    ? manualEl.value.trim()
+    : document.getElementById('plan-file').value;
   await fetch('/api/planning-config', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -1876,6 +1954,48 @@ async function loadGeoLocations() {
   });
 
   el.innerHTML = `<div style="margin-top:8px">${rows.join('')}</div>`;
+}
+
+// ── Skärmklipp ─────────────────────────────────────────────────
+
+async function initScreenshotSettings() {
+  const cfg = await fetch('/api/screenshot-config').then(r => r.json());
+  document.getElementById('screenshot-enabled').checked = cfg.enabled;
+}
+
+async function saveScreenshotSettings() {
+  const enabled = document.getElementById('screenshot-enabled').checked;
+  const status  = document.getElementById('screenshot-save-status');
+  await fetch('/api/screenshot-config', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ enabled })
+  });
+  status.textContent = 'Sparat';
+  setTimeout(() => status.textContent = '', 2000);
+}
+
+// ── Kontor ─────────────────────────────────────────────────────
+
+function _applyOfficeSuggestedPath(cfg) {
+  _renderPlanFileUI(cfg.suggested_path, null);
+}
+
+async function initOfficeSettings() {
+  const cfg = await fetch('/api/office-config').then(r => r.json());
+  document.getElementById('office-select').value = cfg.office || 'goteborg';
+  _applyOfficeSuggestedPath(cfg);
+}
+
+async function saveOfficeSettings() {
+  const office = document.getElementById('office-select').value;
+  const status = document.getElementById('office-save-status');
+  const cfg = await fetch('/api/office-config', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ office })
+  }).then(r => r.json());
+  _applyOfficeSuggestedPath(cfg);
+  status.textContent = 'Sparat';
+  setTimeout(() => status.textContent = '', 2000);
 }
 
 // ── Platsloggning ──────────────────────────────────────────────
@@ -4111,6 +4231,70 @@ def api_geo_config():
         "enabled":  cfg.get("geo_enabled", False),
         "interval": cfg.get("geo_interval", 5),
     })
+
+
+@app.route("/api/screenshot-config", methods=["GET", "POST"])
+def api_screenshot_config():
+    cfg = load_config()
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        cfg["screenshot_rename_enabled"] = data.get("enabled", True)
+        save_config(cfg)
+        if _screenshot_watcher:
+            try:
+                if cfg["screenshot_rename_enabled"]:
+                    _screenshot_watcher.start()
+                else:
+                    _screenshot_watcher.stop()
+            except Exception as e:
+                return jsonify({"ok": True, "warning": str(e)})
+        return jsonify({"ok": True})
+    return jsonify({"enabled": cfg.get("screenshot_rename_enabled", True)})
+
+
+_PLAN_FILE_SKIP_DIRS = {"äldre versioner", "utvecklingsfiler", "arkiv", "backup"}
+_PLAN_FILE_NAMES = {
+    "goteborg":  "Oaks Resursplanering.xlsm",
+    "stockholm": "Oaks Resursplanering_Stockholm.xlsm",
+}
+_PLAN_CACHE_TTL = 60  # sekunder
+_plan_file_cache: dict = {}  # {office: (path_or_none, timestamp)}
+
+
+def _find_planning_file(office: str = "goteborg") -> str | None:
+    """Söker efter planeringsfil i OneDrive-synkad mapp. Cachar resultatet 60s."""
+    cached = _plan_file_cache.get(office)
+    if cached and (time.time() - cached[1]) < _PLAN_CACHE_TTL:
+        return cached[0]
+
+    filename = _PLAN_FILE_NAMES.get(office, "Oaks Resursplanering.xlsm")
+    result = None
+    for candidate in Path.home().rglob(filename):
+        parts = {p.lower() for p in candidate.parts}
+        if parts & _PLAN_FILE_SKIP_DIRS:
+            continue
+        try:
+            if candidate.stat().st_size == 0:  # OneDrive "Endast online"-platshållare
+                continue
+        except OSError:
+            continue
+        result = str(candidate)
+        break
+
+    _plan_file_cache[office] = (result, time.time())
+    return result
+
+
+@app.route("/api/office-config", methods=["GET", "POST"])
+def api_office_config():
+    cfg = load_config()
+    if request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        cfg["office"] = data.get("office", "goteborg")
+        save_config(cfg)
+    office = cfg.get("office", "goteborg")
+    suggested = _find_planning_file(office)
+    return jsonify({"office": office, "suggested_path": suggested})
 
 
 @app.route("/api/geo-locations")

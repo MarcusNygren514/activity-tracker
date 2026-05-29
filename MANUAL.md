@@ -1,131 +1,132 @@
-# Activity Tracker – Användarmanual
+﻿# Activity Tracker â€“ AnvÃ¤ndarmanual
 
-> Senast uppdaterad: v0.19b (2026-05-26)
+> Senast uppdaterad: v0.20b (2026-05-29)
 
 ---
 
 ## 1. Nedladdning
 
-1. Gå till: https://github.com/MarcusNygren514/activity-tracker/releases/latest
-2. Klicka på filen **ActivityTracker_Setup_vX.Yb.exe** under *Assets*.
-3. Om webbläsaren varnar ("okänd utgivare") – klicka **Behåll** eller **Kör ändå**.  
-   *(Installationsfilen är inte kodsignerad, men är säker.)*
+1. GÃ¥ till: https://github.com/MarcusNygren514/activity-tracker/releases/latest
+2. Klicka pÃ¥ filen **ActivityTracker_Setup_vX.Yb.exe** under *Assets*.
+3. Om webblÃ¤saren varnar ("okÃ¤nd utgivare") â€“ klicka **BehÃ¥ll** eller **KÃ¶r Ã¤ndÃ¥**.  
+   *(Installationsfilen Ã¤r inte kodsignerad, men Ã¤r sÃ¤ker.)*
 
 ---
 
 ## 2. Installation
 
-1. Dubbelklicka på den nedladdade `.exe`-filen.
-2. Klicka **Nästa** och sedan **Installera**.  
+1. Dubbelklicka pÃ¥ den nedladdade `.exe`-filen.
+2. Klicka **NÃ¤sta** och sedan **Installera**.  
    Appen installeras i `C:\Program Files\ActivityTracker\`.
-3. Lämna **"Starta Activity Tracker nu"** ikryssad och klicka **Slutför**.
+3. LÃ¤mna **"Starta Activity Tracker nu"** ikryssad och klicka **SlutfÃ¶r**.
 
-**Appen startar nu automatiskt** – ett litet ikon visas i systemfältet (nere till höger, vid klockan).
+**Appen startar nu automatiskt** â€“ ett litet ikon visas i systemfÃ¤ltet (nere till hÃ¶ger, vid klockan).
 
-> **Activity Tracker startar automatiskt** vid varje Windows-inloggning – du behöver aldrig starta den manuellt. Den körs tyst i bakgrunden och loggar din aktivitet hela arbetsdagen.
+> **Activity Tracker startar automatiskt** vid varje Windows-inloggning â€“ du behÃ¶ver aldrig starta den manuellt. Den kÃ¶rs tyst i bakgrunden och loggar din aktivitet hela arbetsdagen.
 
 ---
 
-## 3. Första start – registrering
+## 3. FÃ¶rsta start â€“ registrering
 
-Vid allra första start visas en **registreringsdialog**.
+Vid allra fÃ¶rsta start visas en **registreringsdialog**.
 
 1. Fyll i ditt **namn** och din **e-postadress**.
 2. Klicka **Registrera**.
-3. Du får ett bekräftelsemejl – det behöver du inte göra något med, det är bara en kvittens.
+3. Du fÃ¥r ett bekrÃ¤ftelsemejl â€“ det behÃ¶ver du inte gÃ¶ra nÃ¥got med, det Ã¤r bara en kvittens.
 
-Registreringen används för att:
+Registreringen anvÃ¤nds fÃ¶r att:
 - Ta emot automatiska uppdateringar (OTA)
-- Koppla feedback till rätt person
+- Koppla feedback till rÃ¤tt person
 
-> Om dialogen inte dyker upp direkt: högerklicka på tray-ikonen och välj **Öppna** – dialogen visas på startsidan.
+> Om dialogen inte dyker upp direkt: hÃ¶gerklicka pÃ¥ tray-ikonen och vÃ¤lj **Ã–ppna** â€“ dialogen visas pÃ¥ startsidan.
 
 ---
 
-## 4. Gränssnittet
+## 4. GrÃ¤nssnittet
 
-Öppna webbgränssnittet genom att:
-- Klicka på **tray-ikonen** (nere till höger), eller
-- Öppna en webbläsare och gå till **http://localhost:5757**
+Ã–ppna webbgrÃ¤nssnittet genom att:
+- Klicka pÃ¥ **tray-ikonen** (nere till hÃ¶ger), eller
+- Ã–ppna en webblÃ¤sare och gÃ¥ till **http://localhost:5757**
 
-Gränssnittet har nio flikar:
+GrÃ¤nssnittet har nio flikar:
 
 | Flik | Vad den visar |
 |---|---|
-| **Dashboard** | Daglig översikt – aktiv tid, topp-program, timdiagram |
-| **Live** | Vad som är öppet just nu, uppdateras var 5:e sekund |
-| **Perioder** | Rådata – alla loggade aktivitetsperioder |
-| **Program** | Tid per program, filtrerat på projekt |
-| **Sessioner** | Sammanhängande arbetspass |
-| **Tidslinje** | Gantt-diagram + tidsredovisningsförslag |
-| **Maj-Britt** | AI-assistent – ställ frågor om din aktivitetsdata |
+| **Dashboard** | Daglig Ã¶versikt â€“ aktiv tid, topp-program, timdiagram |
+| **Live** | Vad som Ã¤r Ã¶ppet just nu, uppdateras var 5:e sekund |
+| **Perioder** | RÃ¥data â€“ alla loggade aktivitetsperioder |
+| **Program** | Tid per program, filtrerat pÃ¥ projekt |
+| **Sessioner** | SammanhÃ¤ngande arbetspass |
+| **Tidslinje** | Gantt-diagram + tidsredovisningsfÃ¶rslag |
+| **Maj-Britt** | AI-assistent â€“ stÃ¤ll frÃ¥gor om din aktivitetsdata |
 | **Feedback** | Skicka synpunkter eller felrapporter till utvecklaren |
-| **Inställningar** | Platsspårning och resursplanering |
+| **InstÃ¤llningar** | PlatsspÃ¥rning och resursplanering |
 
-Klicka på **?** bredvid en flik för en kort beskrivning av innehållet.
+Klicka pÃ¥ **?** bredvid en flik fÃ¶r en kort beskrivning av innehÃ¥llet.
 
 ---
 
-## 5. Dagligt användande
+## 5. Dagligt anvÃ¤ndande
 
 ### Projekt
-Activity Tracker identifierar automatiskt projekt i fönsterrubriker, URL:er och filsökvägar. Projektnummer på formatet **P12345** eller **S12345** plockas upp utan att du behöver göra något.
+Activity Tracker identifierar automatiskt projekt i fÃ¶nsterrubriker, URL:er och filsÃ¶kvÃ¤gar. Projektnummer pÃ¥ formatet **P12345** eller **S12345** plockas upp utan att du behÃ¶ver gÃ¶ra nÃ¥got.
 
-Använd **projektfiltret** (dropdown i varje flik) för att se tid kopplad till ett specifikt projekt.
+AnvÃ¤nd **projektfiltret** (dropdown i varje flik) fÃ¶r att se tid kopplad till ett specifikt projekt.
 
-### Tidsredovisningsförslag
-I **Tidslinje**-fliken finns en sektion *Tidsredovisning* längst ned (klicka för att expandera).  
-Den visar ett förslag på hur många timmar du bör redovisa per projekt och dag, baserat på faktisk aktivitetsdata. Tiden är upprundat uppåt till närmaste halvtimme.
+### TidsredovisningsfÃ¶rslag
+I **Tidslinje**-fliken finns en sektion *Tidsredovisning* lÃ¤ngst ned (klicka fÃ¶r att expandera).  
+Den visar ett fÃ¶rslag pÃ¥ hur mÃ¥nga timmar du bÃ¶r redovisa per projekt och dag, baserat pÃ¥ faktisk aktivitetsdata. Tiden Ã¤r upprundat uppÃ¥t till nÃ¤rmaste halvtimme.
 
 ### Maj-Britt (AI-assistenten)
-Ställ frågor som:
-- *"Vad jobbade jag med igår?"*
-- *"Hur fördelades min tid på P26028 den här veckan?"*
-- *"Vilket program använde jag mest?"*
+StÃ¤ll frÃ¥gor som:
+- *"Vad jobbade jag med igÃ¥r?"*
+- *"Hur fÃ¶rdelades min tid pÃ¥ P26028 den hÃ¤r veckan?"*
+- *"Vilket program anvÃ¤nde jag mest?"*
 
-Välj AI-källa i inställningspanelen överst:
-- **Ollama (lokalt)** – kräver att Ollama är installerat, all data stannar på din dator
-- **OpenAI / ChatGPT** – kräver API-nyckel, data skickas till OpenAI
-- **Anthropic Claude** – kräver API-nyckel, data skickas till Anthropic
+VÃ¤lj AI-kÃ¤lla i instÃ¤llningspanelen Ã¶verst:
+- **Ollama (lokalt)** â€“ krÃ¤ver att Ollama Ã¤r installerat, all data stannar pÃ¥ din dator
+- **OpenAI / ChatGPT** â€“ krÃ¤ver API-nyckel, data skickas till OpenAI
+- **Anthropic Claude** â€“ krÃ¤ver API-nyckel, data skickas till Anthropic
 
-### Platsspårning (valfritt)
-Aktiveras i **Inställningar**-fliken. Loggar din position via Windows Location API och visar besökta platser i Tidslinje-fliken. Inga data skickas till externa tjänster.
+### PlatsspÃ¥rning (valfritt)
+Aktiveras i **InstÃ¤llningar**-fliken. Loggar din position via Windows Location API och visar besÃ¶kta platser i Tidslinje-fliken. Inga data skickas till externa tjÃ¤nster.
 
 ---
 
 ## 6. Uppdateringar
 
-Activity Tracker kontrollerar automatiskt om det finns en ny version (en gång per dygn).  
-När en uppdatering finns:
+Activity Tracker kontrollerar automatiskt om det finns en ny version (en gÃ¥ng per dygn).  
+NÃ¤r en uppdatering finns:
 
-1. En notis visas i systemfältet.
-2. Högerklicka på tray-ikonen – välj **Installera uppdatering**.
+1. En notis visas i systemfÃ¤ltet.
+2. HÃ¶gerklicka pÃ¥ tray-ikonen â€“ vÃ¤lj **Installera uppdatering**.
 3. Installationen sker tyst och appen startar om automatiskt.
 
-Du kan alltid välja **Hoppa över den här versionen** om du inte vill uppdatera just nu.
+Du kan alltid vÃ¤lja **Hoppa Ã¶ver den hÃ¤r versionen** om du inte vill uppdatera just nu.
 
 ---
 
-## 7. Felsökning
+## 7. FelsÃ¶kning
 
 ### Appen startar inte
-- Kontrollera att ikonen inte redan finns i systemfältet (klicka på pilen `^` bredvid klockan).
-- Starta om via: `Start → Sök → Activity Tracker`.
-- Om problemet kvarstår: stäng eventuellt hängande process via Aktivitetshanteraren (sök på `pythonw.exe`), ta bort filen `%USERPROFILE%\activity_tracker\tray.lock` och starta igen.
+- Kontrollera att ikonen inte redan finns i systemfÃ¤ltet (klicka pÃ¥ pilen `^` bredvid klockan).
+- Starta om via: `Start â†’ SÃ¶k â†’ Activity Tracker`.
+- Om problemet kvarstÃ¥r: stÃ¤ng eventuellt hÃ¤ngande process via Aktivitetshanteraren (sÃ¶k pÃ¥ `pythonw.exe`), ta bort filen `%USERPROFILE%\activity_tracker\tray.lock` och starta igen.
 
-### Webbgränssnittet öppnas inte
-- Kontrollera att tray-ikonen visas (appen måste köra).
-- Gå till http://localhost:5757 i webbläsaren.
-- Vänta 10–15 sekunder vid första start – appen laddar in data.
+### WebbgrÃ¤nssnittet Ã¶ppnas inte
+- Kontrollera att tray-ikonen visas (appen mÃ¥ste kÃ¶ra).
+- GÃ¥ till http://localhost:5757 i webblÃ¤saren.
+- VÃ¤nta 10â€“15 sekunder vid fÃ¶rsta start â€“ appen laddar in data.
 
 ### Feedback
-Gå till **Feedback**-fliken i gränssnittet och beskriv problemet. Diagnostikinformation bifogas automatiskt.
+GÃ¥ till **Feedback**-fliken i grÃ¤nssnittet och beskriv problemet. Diagnostikinformation bifogas automatiskt.
 
 ---
 
 ## 8. Avinstallation
 
-1. Gå till **Inställningar → Appar** i Windows.
-2. Sök på *Activity Tracker* och välj **Avinstallera**.
+1. GÃ¥ till **InstÃ¤llningar â†’ Appar** i Windows.
+2. SÃ¶k pÃ¥ *Activity Tracker* och vÃ¤lj **Avinstallera**.
 
-> Din data (`%USERPROFILE%\activity_tracker\`) berörs inte av avinstallationen.
+> Din data (`%USERPROFILE%\activity_tracker\`) berÃ¶rs inte av avinstallationen.
+

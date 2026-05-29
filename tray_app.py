@@ -223,7 +223,8 @@ def main():
     start_tracker()
     time.sleep(1)
     start_web()
-    screenshot_watcher.start()
+    if web_app.load_config().get("screenshot_rename_enabled", True):
+        screenshot_watcher.start()
     time.sleep(1)
 
     # Watchdog som startar om trackern vid krasch/sleep
