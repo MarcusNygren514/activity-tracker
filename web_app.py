@@ -1541,8 +1541,11 @@ async function loadDashboard() {
 function drawTimeline(hourly) {
   const canvas = document.getElementById('timeline-canvas');
   const W = canvas.offsetWidth||700, H = 200;
-  canvas.width=W; canvas.height=H;
+  const _dpr = window.devicePixelRatio || 1;
+  canvas.width = W * _dpr; canvas.height = H * _dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   const ctx = canvas.getContext('2d');
+  ctx.scale(_dpr, _dpr);
   const hours = Array.from({length:24},(_,i)=>i);
   const vals  = hours.map(h=>(hourly.find(x=>x.hour===h)||{total_sec:0}).total_sec);
   const max   = Math.max(...vals,1);
@@ -2351,9 +2354,13 @@ function drawGantt() {
   const timelineX = x => LABEL_W + ganttOffsetX + x * ganttScale;
 
   // ── Rita header-canvas ────────────────────────────────────────
-  hCanvas.width  = totalW;
-  hCanvas.height = axisH;
+  const dpr = window.devicePixelRatio || 1;
+  hCanvas.width  = totalW * dpr;
+  hCanvas.height = axisH * dpr;
+  hCanvas.style.width  = totalW + 'px';
+  hCanvas.style.height = axisH + 'px';
   const hCtx = hCanvas.getContext('2d');
+  hCtx.scale(dpr, dpr);
   hCtx.clearRect(0, 0, totalW, axisH);
 
   hCtx.fillStyle = C.surface;
@@ -2405,9 +2412,12 @@ function drawGantt() {
   }
 
   // ── Rita body-canvas ──────────────────────────────────────────
-  canvas.width  = totalW;
-  canvas.height = bodyH;
+  canvas.width  = totalW * dpr;
+  canvas.height = bodyH * dpr;
+  canvas.style.width  = totalW + 'px';
+  canvas.style.height = bodyH + 'px';
   const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, totalW, bodyH);
 
   ctx.fillStyle = C.bg;
