@@ -43,7 +43,7 @@ _PS_CODE_RE = re.compile(r'\b(?:SI|SP|[IPS])\d{5}(?!\d)')
 # Webbläsarprocesser – synkroniserat med tracker.py
 BROWSER_PROCS = {"chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe"}
 
-VERSION         = "v0.20b"
+VERSION         = "v0.21b"
 DB_PATH         = Path.home() / "activity_tracker" / "activity.db"
 CONFIG_PATH     = Path.home() / "activity_tracker" / "app_config.json"
 PLAN_CACHE_PATH = Path.home() / "activity_tracker" / "planning_cache.json"
@@ -615,11 +615,11 @@ a.row-link:hover{opacity:1;text-decoration:underline}
     <div id="gantt-outer" style="border:1px solid var(--border);border-radius:var(--r);background:var(--surface);overflow:hidden">
       <!-- Sticky tidsaxel -->
       <div style="position:sticky;top:0;z-index:10;background:var(--surface)">
-        <canvas id="gantt-header" style="display:block"></canvas>
+        <svg id="gantt-header" style="display:block;overflow:hidden"></svg>
       </div>
       <!-- Scrollbar rad-innehåll -->
       <div id="gantt-wrap" style="overflow-y:auto;overflow-x:hidden;max-height:60vh">
-        <canvas id="gantt-canvas" style="display:block;cursor:grab"></canvas>
+        <svg id="gantt-svg" style="display:block;cursor:grab;overflow:hidden"></svg>
       </div>
     </div>
     <div style="margin-top:12px;font-size:11px;color:var(--muted);font-family:var(--mono)">
@@ -2298,11 +2298,15 @@ async function loadTimeReport(from, to) {
 }
 
 
+function _svgEsc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function drawGantt() {
   if (!ganttData) return;
-  const canvas  = document.getElementById('gantt-canvas');
-  const hCanvas = document.getElementById('gantt-header');
-  const wrap    = document.getElementById('gantt-wrap');
+  const hSvg = document.getElementById('gantt-header');
+  const svg  = document.getElementById('gantt-svg');
+  const wrap = document.getElementById('gantt-wrap');
   const from    = new Date(document.getElementById('gantt-from').value);
   const to      = new Date(document.getElementById('gantt-to').value);
   const totalSec = (to - from) / 1000;
@@ -2334,11 +2338,10 @@ function drawGantt() {
 
   const DAYS_SV = ['Sön','Mån','Tis','Ons','Tor','Fre','Lör'];
   const showDayLabels = totalSec > 3600 * 20;
-  const axisH = showDayLabels ? HEADER_H + 18 : HEADER_H;
+  const axisH  = showDayLabels ? HEADER_H + 18 : HEADER_H;
   const totalW = Math.max(wrapW, LABEL_W + totalSec * ganttScale + 40);
   const bodyH  = rows.reduce((s,r) => s + (r.type==='header'?22 : r.type==='gap'?SECTION_GAP : ROW_H), 0) + 20;
 
-  // Läs CSS-variabler
   const cs = getComputedStyle(document.documentElement);
   const C = {
     bg:      cs.getPropertyValue('--bg').trim(),
@@ -2351,220 +2354,168 @@ function drawGantt() {
     font:    cs.getPropertyValue('--font').trim() || 'Plus Jakarta Sans, sans-serif',
   };
 
-  const timelineX = x => LABEL_W + ganttOffsetX + x * ganttScale;
-
-  // ── Rita header-canvas ────────────────────────────────────────
-  const dpr = window.devicePixelRatio || 1;
-  hCanvas.width  = totalW * dpr;
-  hCanvas.height = axisH * dpr;
-  hCanvas.style.width  = totalW + 'px';
-  hCanvas.style.height = axisH + 'px';
-  const hCtx = hCanvas.getContext('2d');
-  hCtx.scale(dpr, dpr);
-  hCtx.clearRect(0, 0, totalW, axisH);
-
-  hCtx.fillStyle = C.surface;
-  hCtx.fillRect(0, 0, LABEL_W, axisH);
-  hCtx.fillStyle = C.border;
-  hCtx.fillRect(LABEL_W, 0, totalW - LABEL_W, axisH);
-
   const tickIntervals = [60,300,600,1800,3600,7200,14400,21600,43200,86400];
   const tickSec = tickIntervals.find(t => t * ganttScale >= 60) || 86400;
+  const nowSec  = (new Date() - from) / 1000;
+  const panX    = LABEL_W + ganttOffsetX;
 
-  hCtx.font = '10px JetBrains Mono';
-  hCtx.textAlign = 'center';
+  // ── Header SVG ────────────────────────────────────────────────
+  hSvg.setAttribute('width', totalW);
+  hSvg.setAttribute('height', axisH);
+  hSvg.style.width  = totalW + 'px';
+  hSvg.style.height = axisH + 'px';
+
+  let hPan = '';
   for (let s = 0; s <= totalSec + tickSec; s += tickSec) {
-    const x = timelineX(s);
-    if (x < LABEL_W || x > totalW) continue;
-    hCtx.strokeStyle = C.muted + '44'; hCtx.lineWidth = 1;
-    hCtx.beginPath(); hCtx.moveTo(x, 0); hCtx.lineTo(x, axisH); hCtx.stroke();
-    hCtx.fillStyle = C.muted;
-    hCtx.fillText(new Date(from.getTime() + s*1000).toTimeString().slice(0,5), x, HEADER_H - 6);
+    const x = s * ganttScale;
+    hPan += `<line x1="${x}" y1="0" x2="${x}" y2="${axisH}" stroke="${C.muted}44" stroke-width="1"/>`;
+    const lbl = new Date(from.getTime() + s*1000).toTimeString().slice(0,5);
+    hPan += `<text x="${x}" y="${HEADER_H-6}" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" fill="${C.muted}">${lbl}</text>`;
   }
-
   if (showDayLabels) {
-    const startDay = new Date(from); startDay.setHours(0,0,0,0);
-    for (let d = new Date(startDay); d <= to; d.setDate(d.getDate()+1)) {
-      const sec = (d - from) / 1000;
-      const x = timelineX(sec);
-      if (x >= LABEL_W && x <= totalW) {
-        hCtx.strokeStyle = C.muted + '88'; hCtx.lineWidth = 1.5;
-        hCtx.beginPath(); hCtx.moveTo(x, 0); hCtx.lineTo(x, axisH); hCtx.stroke();
-      }
-      const midX = timelineX(sec + 43200);
-      if (midX >= LABEL_W && midX <= totalW) {
-        hCtx.fillStyle = C.accent;
-        hCtx.font = 'bold 10px JetBrains Mono';
-        hCtx.textAlign = 'center';
-        hCtx.fillText(DAYS_SV[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth()+1), midX, HEADER_H + 13);
-      }
+    const sd = new Date(from); sd.setHours(0,0,0,0);
+    for (let d = new Date(sd); d <= to; d.setDate(d.getDate()+1)) {
+      const s = (d - from) / 1000;
+      hPan += `<line x1="${s*ganttScale}" y1="0" x2="${s*ganttScale}" y2="${axisH}" stroke="${C.muted}88" stroke-width="1.5"/>`;
+      const mx = (s + 43200) * ganttScale;
+      hPan += `<text x="${mx}" y="${HEADER_H+13}" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="10" font-weight="bold" fill="${C.accent}">${DAYS_SV[d.getDay()]} ${d.getDate()}/${d.getMonth()+1}</text>`;
     }
   }
+  const nowH = (nowSec > 0 && nowSec < totalSec)
+    ? `<line x1="${panX + nowSec*ganttScale}" y1="0" x2="${panX + nowSec*ganttScale}" y2="${axisH}" stroke="${C.accent2}" stroke-width="1.5" stroke-dasharray="4,3"/>` : '';
 
-  // Nulinje i header
-  const nowSec = (new Date() - from) / 1000;
-  if (nowSec > 0 && nowSec < totalSec) {
-    const nx = timelineX(nowSec);
-    hCtx.strokeStyle = C.accent2; hCtx.lineWidth = 1.5;
-    hCtx.setLineDash([4,3]);
-    hCtx.beginPath(); hCtx.moveTo(nx, 0); hCtx.lineTo(nx, axisH); hCtx.stroke();
-    hCtx.setLineDash([]);
-  }
+  hSvg.innerHTML = `
+    <rect x="0" y="0" width="${totalW}" height="${axisH}" fill="${C.border}"/>
+    <rect x="0" y="0" width="${LABEL_W}" height="${axisH}" fill="${C.surface}"/>
+    <defs><clipPath id="gh-clip"><rect x="${LABEL_W}" y="0" width="${totalW}" height="${axisH}"/></clipPath></defs>
+    <g clip-path="url(#gh-clip)"><g id="gantt-header-pan" transform="translate(${panX},0)">${hPan}</g></g>
+    ${nowH}`;
 
-  // ── Rita body-canvas ──────────────────────────────────────────
-  canvas.width  = totalW * dpr;
-  canvas.height = bodyH * dpr;
-  canvas.style.width  = totalW + 'px';
-  canvas.style.height = bodyH + 'px';
-  const ctx = canvas.getContext('2d');
-  ctx.scale(dpr, dpr);
-  ctx.clearRect(0, 0, totalW, bodyH);
+  // ── Body SVG ──────────────────────────────────────────────────
+  svg.setAttribute('width', totalW);
+  svg.setAttribute('height', bodyH);
+  svg.style.width  = totalW + 'px';
+  svg.style.height = bodyH + 'px';
 
-  ctx.fillStyle = C.bg;
-  ctx.fillRect(0, 0, totalW, bodyH);
-  ctx.fillStyle = C.surface;
-  ctx.fillRect(0, 0, LABEL_W, bodyH);
+  let rowBg = '', labelHtml = '', gridHtml = '', barsHtml = '';
 
-  // Tick-linjer nedåt i body
-  for (let s = 0; s <= totalSec + tickSec; s += tickSec) {
-    const x = timelineX(s);
-    if (x < LABEL_W || x > totalW) continue;
-    ctx.strokeStyle = C.muted + '22'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, bodyH); ctx.stroke();
-  }
+  labelHtml += `<rect x="0" y="0" width="${LABEL_W}" height="${bodyH}" fill="${C.surface}"/>`;
 
-  // Dag-separatorer i body
+  for (let s = 0; s <= totalSec + tickSec; s += tickSec)
+    gridHtml += `<line x1="${s*ganttScale}" y1="0" x2="${s*ganttScale}" y2="${bodyH}" stroke="${C.muted}22" stroke-width="1"/>`;
+
   if (showDayLabels) {
-    const startDay = new Date(from); startDay.setHours(0,0,0,0);
-    for (let d = new Date(startDay); d <= to; d.setDate(d.getDate()+1)) {
-      const x = timelineX((d - from) / 1000);
-      if (x >= LABEL_W && x <= totalW) {
-        ctx.strokeStyle = C.muted + '44'; ctx.lineWidth = 1.5;
-        ctx.setLineDash([3,3]);
-        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, bodyH); ctx.stroke();
-        ctx.setLineDash([]);
-      }
+    const sd = new Date(from); sd.setHours(0,0,0,0);
+    for (let d = new Date(sd); d <= to; d.setDate(d.getDate()+1)) {
+      const x = ((d - from)/1000) * ganttScale;
+      gridHtml += `<line x1="${x}" y1="0" x2="${x}" y2="${bodyH}" stroke="${C.muted}44" stroke-width="1.5" stroke-dasharray="3,3"/>`;
     }
   }
+  if (nowSec > 0 && nowSec < totalSec)
+    gridHtml += `<line x1="${nowSec*ganttScale}" y1="0" x2="${nowSec*ganttScale}" y2="${bodyH}" stroke="${C.accent2}" stroke-width="1.5" stroke-dasharray="4,3"/>`;
 
-  // Nulinje i body
-  if (nowSec > 0 && nowSec < totalSec) {
-    const nx = timelineX(nowSec);
-    ctx.strokeStyle = C.accent2; ctx.lineWidth = 1.5;
-    ctx.setLineDash([4,3]);
-    ctx.beginPath(); ctx.moveTo(nx, 0); ctx.lineTo(nx, bodyH); ctx.stroke();
-    ctx.setLineDash([]);
-  }
-
-  // Rita rader
   let y = 0;
   rows.forEach(row => {
     if (row.type === 'gap') { y += SECTION_GAP; return; }
     if (row.type === 'header') {
-      ctx.fillStyle = C.border;
-      ctx.fillRect(LABEL_W, y, totalW-LABEL_W, 20);
-      ctx.fillStyle = C.muted;
-      ctx.font = '9px JetBrains Mono';
-      ctx.textAlign = 'left';
-      ctx.fillText(row.label, LABEL_W + 8, y + 14);
+      rowBg      += `<rect x="${LABEL_W}" y="${y}" width="${totalW-LABEL_W}" height="20" fill="${C.border}"/>`;
+      labelHtml  += `<text x="${LABEL_W+8}" y="${y+14}" font-family="JetBrains Mono,monospace" font-size="9" fill="${C.muted}">${_svgEsc(row.label)}</text>`;
       y += 22; return;
     }
 
     const isProc   = row.type === 'proc';
     const isActive = row.mode === 'active';
     const periods  = row.data.periods;
-    const barColor = isActive ? (isProc ? C.accent : C.accent+'99')
-                              : (isProc ? C.muted+'aa' : C.muted+'55');
+    const barColor = isActive ? (isProc ? C.accent : C.accent+'99') : (isProc ? C.muted+'aa' : C.muted+'55');
 
-    ctx.fillStyle = 'rgba(128,128,128,0.04)';
-    ctx.fillRect(0, y, totalW, ROW_H);
-    ctx.strokeStyle = C.border; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(totalW,y); ctx.stroke();
-
-    ctx.fillStyle = isActive ? C.text : C.muted;
-    ctx.font = isProc ? `13px ${C.font}` : `11px ${C.font}`;
-    ctx.textAlign = 'left';
+    rowBg     += `<rect x="0" y="${y}" width="${totalW}" height="${ROW_H}" fill="rgba(128,128,128,0.04)"/>`;
+    rowBg     += `<line x1="0" y1="${y}" x2="${totalW}" y2="${y}" stroke="${C.border}" stroke-width="1"/>`;
 
     let displayLabel;
     if (row.type === 'title') {
       const raw = row.data.window_title || '';
       const cutAt = raw.search(/ [-–|] [A-Z]/);
-      const clean = cutAt > 0 ? raw.slice(0, cutAt) : raw;
+      const clean = cutAt > 0 ? raw.slice(0,cutAt) : raw;
       displayLabel = '  ' + (clean.length > 24 ? clean.slice(0,23)+'…' : clean);
     } else {
       const lbl = row.data.process_name;
       displayLabel = lbl.length > 26 ? lbl.slice(0,25)+'…' : lbl;
     }
-    ctx.fillText(displayLabel, 8, y + ROW_H/2 + 4);
+    const fillColor = isActive ? C.text : C.muted;
+    const fontSize  = isProc ? 13 : 11;
+    labelHtml += `<text x="8" y="${y+ROW_H/2+4}" font-family="${_svgEsc(C.font)},sans-serif" font-size="${fontSize}" fill="${fillColor}">${_svgEsc(displayLabel)}</text>`;
 
     if (isProc && row.data.titles && row.data.titles.length > 0) {
-      ctx.fillStyle = C.muted;
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(ganttExpandedRows.has(row.data.process_name) ? '▼' : '▶', LABEL_W - 6, y + ROW_H/2 + 4);
+      const arrow = ganttExpandedRows.has(row.data.process_name) ? '▼' : '▶';
+      labelHtml += `<text x="${LABEL_W-6}" y="${y+ROW_H/2+4}" text-anchor="end" font-size="10" fill="${C.muted}">${arrow}</text>`;
     }
 
     periods.forEach(p => {
       const ps = (new Date(p.started_at) - from) / 1000;
       const pe = (new Date(p.ended_at)   - from) / 1000;
-      const bx = timelineX(ps);
+      const bx = ps * ganttScale;
       const bw = Math.max(2, (pe - ps) * ganttScale);
-      if (bx + bw < LABEL_W || bx > totalW) return;
       const bh = isProc ? 14 : 10;
       const by = y + (ROW_H - bh) / 2;
-      ctx.fillStyle = barColor;
-      ctx.beginPath();
-      ctx.roundRect(Math.max(LABEL_W, bx), by, bw - Math.max(0, LABEL_W - bx), bh, 3);
-      ctx.fill();
+      barsHtml += `<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="3" fill="${barColor}"/>`;
     });
 
     y += ROW_H;
   });
 
-  // Spara radpositioner för klick/tooltip
-  canvas._rows = rows;
-  canvas._rowY = (() => {
-    let yy = 0, ys = [];
-    rows.forEach(r => { ys.push(yy); yy += r.type==='header'?22 : r.type==='gap'?SECTION_GAP : ROW_H; });
-    return ys;
-  })();
-  canvas._from = from;
-  canvas._totalSec = totalSec;
+  svg.innerHTML = `
+    <defs><clipPath id="gantt-clip"><rect x="${LABEL_W}" y="0" width="${totalW}" height="${bodyH}"/></clipPath></defs>
+    <rect x="0" y="0" width="${totalW}" height="${bodyH}" fill="${C.bg}"/>
+    ${rowBg}
+    <g clip-path="url(#gantt-clip)">
+      <g id="gantt-pan" transform="translate(${panX},0)">${gridHtml}${barsHtml}</g>
+    </g>
+    ${labelHtml}`;
+
+  svg._rows = rows;
+  svg._rowY = (() => { let yy=0,ys=[]; rows.forEach(r=>{ys.push(yy);yy+=r.type==='header'?22:r.type==='gap'?SECTION_GAP:ROW_H;}); return ys; })();
+  svg._from = from;
+  svg._totalSec = totalSec;
 }
 
-// Klick – expandera proc-rad
+function updateGanttPan() {
+  const panX = LABEL_W + ganttOffsetX;
+  document.getElementById('gantt-header-pan')?.setAttribute('transform', `translate(${panX},0)`);
+  document.getElementById('gantt-pan')?.setAttribute('transform', `translate(${panX},0)`);
+}
+
+// Gantt SVG event handlers
 document.addEventListener('DOMContentLoaded', () => {
-  const canvas = document.getElementById('gantt-canvas');
-  const tip    = document.getElementById('gantt-tip');
+  const svg  = document.getElementById('gantt-svg');
+  const hSvg = document.getElementById('gantt-header');
+  const tip  = document.getElementById('gantt-tip');
 
   // ── Tooltip vid hovring ──────────────────────────────────────
-  canvas.addEventListener('mousemove', e => {
-    if (ganttDragging || !canvas._rows) { tip.style.display='none'; return; }
-    const rect = canvas.getBoundingClientRect();
+  svg.addEventListener('mousemove', e => {
+    if (ganttDragging || !svg._rows) { tip.style.display='none'; return; }
+    const rect = svg.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     const from = new Date(document.getElementById('gantt-from').value);
 
     let found = null;
-    canvas._rows.forEach((row, i) => {
+    svg._rows.forEach((row, i) => {
       if (row.type === 'header' || row.type === 'gap') return;
-      const ry = canvas._rowY[i];
+      const ry = svg._rowY[i];
       if (my < ry || my >= ry + ROW_H) return;
 
       if (mx <= LABEL_W) {
-        // Hovring på label
         const d = row.data;
         if (row.type === 'proc') {
           const parts = [d.process_name];
-          if (d.active_sec)  parts.push(fmtDur(d.active_sec)  + ' aktiv');
-          if (d.total_sec)   parts.push(fmtDur(d.total_sec)   + ' totalt');
+          if (d.active_sec) parts.push(fmtDur(d.active_sec) + ' aktiv');
+          if (d.total_sec)  parts.push(fmtDur(d.total_sec)  + ' totalt');
           found = parts.join(' · ');
         } else {
           const path = truncatePath(d.url || d.exe_path || '');
           found = d.window_title + (path ? '\n' + path : '');
         }
       } else {
-        // Hovring på stapel
         const timelineX = x => LABEL_W + ganttOffsetX + x * ganttScale;
         const periods = row.data.periods || [];
         for (const p of periods) {
@@ -2595,16 +2546,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  canvas.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
 
-  canvas.addEventListener('click', e => {
-    if (!canvas._rows) return;
-    const rect = canvas.getBoundingClientRect();
+  svg.addEventListener('click', e => {
+    if (!svg._rows) return;
+    const rect = svg.getBoundingClientRect();
     const my = e.clientY - rect.top;
     const mx = e.clientX - rect.left;
     if (mx > LABEL_W) return;
-    canvas._rows.forEach((row, i) => {
-      const ry = canvas._rowY[i];
+    svg._rows.forEach((row, i) => {
+      const ry = svg._rowY[i];
       if (row.type === 'proc' && my >= ry && my < ry + ROW_H) {
         const pn = row.data.process_name;
         if (ganttExpandedRows.has(pn)) ganttExpandedRows.delete(pn);
@@ -2614,18 +2565,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Klick på dagrubrik → zooma till den dagen (bara när fler än en dag visas)
-  const hCanvas = document.getElementById('gantt-header');
-  hCanvas.style.cursor = 'default';
-  // Klick på dagrubrik → zooma till den dagen (bara i flerdagarsvy)
-  hCanvas.style.cursor = 'default';
-  hCanvas.addEventListener('click', e => {
-    const fromEl   = document.getElementById('gantt-from');
-    const toEl     = document.getElementById('gantt-to');
-    const from     = new Date(fromEl.value);
-    const to       = new Date(toEl.value);
-    if ((to - from) <= 3600 * 25 * 1000) return;  // endagsvy – inget att zooma in
-    const rect = hCanvas.getBoundingClientRect();
+  // Klick på dagrubrik → zooma till den dagen
+  hSvg.style.cursor = 'default';
+  hSvg.addEventListener('click', e => {
+    const fromEl = document.getElementById('gantt-from');
+    const toEl   = document.getElementById('gantt-to');
+    const from   = new Date(fromEl.value);
+    const to     = new Date(toEl.value);
+    if ((to - from) <= 3600 * 25 * 1000) return;
+    const rect = hSvg.getBoundingClientRect();
     const mx   = e.clientX - rect.left;
     if (mx <= LABEL_W) return;
     const clickedSec  = (mx - LABEL_W - ganttOffsetX) / ganttScale;
@@ -2643,31 +2591,31 @@ document.addEventListener('DOMContentLoaded', () => {
     loadGantt();
   });
 
-  hCanvas.addEventListener('mousemove', e => {
+  hSvg.addEventListener('mousemove', e => {
     const from = new Date(document.getElementById('gantt-from').value);
     const to   = new Date(document.getElementById('gantt-to').value);
-    const rect = hCanvas.getBoundingClientRect();
+    const rect = hSvg.getBoundingClientRect();
     const mx   = e.clientX - rect.left;
-    hCanvas.style.cursor = ((to - from) > 3600 * 25 * 1000 && mx > LABEL_W) ? 'pointer' : 'default';
+    hSvg.style.cursor = ((to - from) > 3600 * 25 * 1000 && mx > LABEL_W) ? 'pointer' : 'default';
   });
 
-  // Drag för panorering (horisontellt) – behålls men offset nollställs vid loadGantt
-  canvas.addEventListener('mousedown', e => {
-    if (e.clientX - canvas.getBoundingClientRect().left <= LABEL_W) return;
+  // Drag för panorering
+  svg.addEventListener('mousedown', e => {
+    if (e.clientX - svg.getBoundingClientRect().left <= LABEL_W) return;
     ganttDragging = true;
     ganttDragStartX = e.clientX;
     ganttDragStartOffset = ganttOffsetX;
-    canvas.style.cursor = 'grabbing';
+    svg.style.cursor = 'grabbing';
   });
   window.addEventListener('mousemove', e => {
     if (!ganttDragging) return;
     ganttOffsetX = ganttDragStartOffset + (e.clientX - ganttDragStartX);
-    drawGantt();
+    updateGanttPan();
   });
   window.addEventListener('mouseup', () => {
     ganttDragging = false;
-    const canvas = document.getElementById('gantt-canvas');
-    if (canvas) canvas.style.cursor = 'grab';
+    const s = document.getElementById('gantt-svg');
+    if (s) s.style.cursor = 'grab';
   });
 
 });

@@ -1,5 +1,10 @@
 ﻿# Ã„ndringslogg â€“ Activity Tracker
 
+## v0.21b (2026-06-05)
+- Tidslinje: Gantt-diagrammet ritas nu i SVG istället för Canvas – skarp rendering i alla upplösningar och skalningsnivåer
+- Tidslinje: panorering via drag uppdaterar nu bara SVG-transformationen (ingen omritning) – märkbart smidigare
+- Dashboard: timdiagrammet skalas nu korrekt för skärmar med hög upplösning (DPR-fix)
+
 ## v0.20b (2026-05-29)
 - Maj-Britt tillfÃ¤lligt dold ur menyn (koden finns kvar, Ã¥teraktiveras nÃ¤r AI-motor Ã¤r beslutad)
 - InstÃ¤llningar: kontorsval (GÃ¶teborg/Stockholm) â€“ sparas och anvÃ¤nds fÃ¶r projektigenkÃ¤nning i kommande versioner
@@ -126,4 +131,5 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 

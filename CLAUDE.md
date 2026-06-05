@@ -78,7 +78,7 @@ Vid lÃ¥sfel: kontrollerar via WMI om en verklig pythonw-instans kÃ¶r `tray_a
 `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ADMIN_EMAIL`, `GITHUB_TOKEN`, `GITHUB_REPO`, `DB_PATH`
 
 ## Aktuellt version
-`v0.20b` (slÃ¤ppt 2026-05-29). PÃ¥gÃ¥ende: `v0.20b` (ej slÃ¤ppt). Se `CHANGELOG.md` fÃ¶r fullstÃ¤ndig historik.
+`v0.20b` (släppt 2026-05-29). Pågående: `v0.21b` (ej släppt). Se `CHANGELOG.md` för fullständig historik.
 
 ## Autostart
 Appen registreras fÃ¶r autostart via Windows-registret:
@@ -91,4 +91,5 @@ Inno Setup-installern skriver sin egen post (pekar pÃ¥ installerad `.exe`) men
 
 ## Bygga installer
 PyInstaller â†’ `.exe`, sedan Inno Setup fÃ¶r installationsprogram. Releaser gÃ¶rs via GitHub Releases â€“ backend servar nedladdningar.
+
 
