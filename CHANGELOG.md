@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€“ Activity Tracker
 
+## v0.22b (2026-06-05)
+- Buggfix: appen startar nu korrekt efter OTA-installation – stale lock-fil hanteras även när appen kör som ActivityTracker.exe (tidigare kontrollerades bara pythonw.exe)
+
 ## v0.21b (2026-06-05)
 - Tidslinje: Gantt-diagrammet ritas nu i SVG istället för Canvas – skarp rendering i alla upplösningar och skalningsnivåer
 - Tidslinje: panorering via drag uppdaterar nu bara SVG-transformationen (ingen omritning) – märkbart smidigare
@@ -131,5 +134,6 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 

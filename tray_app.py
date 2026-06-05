@@ -282,10 +282,14 @@ if __name__ == "__main__":
                 # Kontrollera om en verklig instans faktiskt körs
                 import subprocess
                 result = subprocess.run(
-                    ["wmic", "process", "where", "name='pythonw.exe'", "get", "commandline"],
+                    ["wmic", "process", "get", "name,commandline"],
                     capture_output=True, text=True
                 )
-                if "tray_app.py" in result.stdout:
+                already_running = (
+                    "tray_app.py" in result.stdout or
+                    result.stdout.count("ActivityTracker.exe") > 1
+                )
+                if already_running:
                     logging.warning("En instans körs redan – avslutar")
                     sys.exit(0)
                 # Stale lock – rensa och försök igen
@@ -294,6 +298,7 @@ if __name__ == "__main__":
                     _LOCK.unlink(missing_ok=True)
                 except OSError:
                     pass
+                time.sleep(1)  # ge eventuell döende process tid att frigöra låset
             else:
                 logging.error("Kunde inte ta låset – avslutar")
                 sys.exit(1)

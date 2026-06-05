@@ -93,3 +93,4 @@ Inno Setup-installern skriver sin egen post (pekar pÃ¥ installerad `.exe`) men
 PyInstaller â†’ `.exe`, sedan Inno Setup fÃ¶r installationsprogram. Releaser gÃ¶rs via GitHub Releases â€“ backend servar nedladdningar.
 
 
+
