@@ -1,4 +1,13 @@
-﻿# Ã„ndringslogg â€“ Activity Tracker
+﻿# Ã„ndringslogg â€” Activity Tracker
+
+## v0.23b (2026-06-08)
+- Tray-ikonen visar nu aktuell version i tooltip och i högerklicksmenyn
+- Buggfix: tracker-kraschar loggas nu korrekt till tray.log (skrevs tidigare till stdout som förkastas i produktion)
+- Buggfix: race condition i start_tracker() – en threading.Lock förhindrar nu att två tracker-trådar startas parallellt
+- Buggfix: OTA-notiser vid nedladdning och fel fungerar nu korrekt (tray-ikonen kopplades aldrig in i updater)
+- Buggfix: dubbelklick på “Installera uppdatering” kan inte längre starta två installerare parallellt
+- Buggfix: tempmapp med nedladdad installer städas nu bort om nedladdningen misslyckas
+- Buggfix: SQLite-connection i webbläsarhistorik (Chrome/Edge och Firefox) stängs nu korrekt även vid exceptions
 
 ## v0.22b (2026-06-05)
 - Buggfix: appen startar nu korrekt efter OTA-installation – stale lock-fil hanteras även när appen kör som ActivityTracker.exe (tidigare kontrollerades bara pythonw.exe)
@@ -134,6 +143,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 

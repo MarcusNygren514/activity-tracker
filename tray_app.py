@@ -55,6 +55,7 @@ WEB_PORT = 5757
 tracker_thread = None
 web_thread = None
 tracker_running = False
+_tracker_lock = threading.Lock()
 
 
 def make_icon(active=True):
@@ -94,16 +95,17 @@ def start_ollama():
 
 def start_tracker():
     global tracker_thread, tracker_running
-    if tracker_running:
-        return
+    with _tracker_lock:
+        if tracker_running:
+            return
+        tracker_running = True
 
     def run():
         global tracker_running
-        tracker_running = True
         try:
             tracker.run()
-        except Exception as e:
-            print(f"Tracker error: {e}")
+        except Exception:
+            logging.exception("Tracker kraschade")
         finally:
             tracker_running = False
 
@@ -142,6 +144,7 @@ def _build_menu(tray):
     items = [
         item("📊 Öppna dashboard", open_browser, default=True),
         pystray.Menu.SEPARATOR,
+        item(f"Version {web_app.VERSION}", lambda *a: None, enabled=False),
         item("Tracker: aktiv ✓", lambda *a: None, enabled=False),
         item(f"Webb: localhost:{WEB_PORT}", lambda *a: None, enabled=False),
     ]
@@ -164,12 +167,13 @@ def create_tray():
     tray = pystray.Icon(
         "ActivityTracker",
         icon_img,
-        "Activity Tracker",
+        f"Activity Tracker {web_app.VERSION}",
     )
 
     # Koppla OTA-callbacks innan vi bygger menyn
     updater.on_update_available = lambda: _build_menu(tray)
     updater.on_update_cleared   = lambda: _build_menu(tray)
+    updater._tray_icon = tray
 
     _build_menu(tray)
     return tray

@@ -295,13 +295,15 @@ def get_browser_urls(start: datetime, end: datetime) -> list[dict]:
             shutil.copy2(path, tmp)
             conn = sqlite3.connect(str(tmp))
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("""
-                SELECT url, title, last_visit_time
-                FROM urls
-                WHERE last_visit_time BETWEEN ? AND ?
-                ORDER BY last_visit_time
-            """, (start_chrome, end_chrome)).fetchall()
-            conn.close()
+            try:
+                rows = conn.execute("""
+                    SELECT url, title, last_visit_time
+                    FROM urls
+                    WHERE last_visit_time BETWEEN ? AND ?
+                    ORDER BY last_visit_time
+                """, (start_chrome, end_chrome)).fetchall()
+            finally:
+                conn.close()
             for row in rows:
                 url = row["url"]
                 if url.startswith(("chrome://", "chrome-extension://", "edge://", "data:", "about:")):
@@ -335,14 +337,16 @@ def get_browser_urls(start: datetime, end: datetime) -> list[dict]:
             shutil.copy2(path, tmp)
             conn = sqlite3.connect(str(tmp))
             conn.row_factory = sqlite3.Row
-            rows = conn.execute("""
-                SELECT p.url, p.title, v.visit_date
-                FROM moz_historyvisits v
-                JOIN moz_places p ON p.id = v.place_id
-                WHERE v.visit_date BETWEEN ? AND ?
-                ORDER BY v.visit_date
-            """, (start_ff, end_ff)).fetchall()
-            conn.close()
+            try:
+                rows = conn.execute("""
+                    SELECT p.url, p.title, v.visit_date
+                    FROM moz_historyvisits v
+                    JOIN moz_places p ON p.id = v.place_id
+                    WHERE v.visit_date BETWEEN ? AND ?
+                    ORDER BY v.visit_date
+                """, (start_ff, end_ff)).fetchall()
+            finally:
+                conn.close()
             for row in rows:
                 url = row["url"]
                 if url.startswith(("about:", "moz-extension://", "data:")):

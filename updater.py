@@ -8,6 +8,7 @@ import os
 import re
 import json
 import time
+import shutil
 import logging
 import tempfile
 import threading
@@ -31,6 +32,7 @@ _skipped_file = _app_dir / "skipped_versions.json"
 # ── Väntande uppdatering ──────────────────────────────────────────
 _pending      = None        # {"version": "v1.1", "url": "...", "notes": "..."}
 _pending_lock = threading.Lock()
+_installing   = False
 
 # ── Callbacks (sätts från tray_app) ──────────────────────────────
 on_update_available = None
@@ -94,10 +96,14 @@ def skip_pending():
 
 
 def install_pending():
+    global _installing
     with _pending_lock:
+        if _installing:
+            return
         info = _pending
-    if not info:
-        return
+        if not info:
+            return
+        _installing = True
     t = threading.Thread(target=_download_and_install,
                          args=(info["url"], info["version"]),
                          daemon=True, name="OTA-install")
@@ -171,7 +177,8 @@ def check_and_update(force: bool = False):
 
 
 def _download_and_install(url: str, version: str):
-    global _pending
+    global _pending, _installing
+    tmp_dir = None
     try:
         tmp_dir  = Path(tempfile.mkdtemp())
         exe_path = tmp_dir / f"ActivityTracker_{version}_setup.exe"
@@ -202,6 +209,9 @@ def _download_and_install(url: str, version: str):
     except Exception as e:
         log.error(f"Uppdatering misslyckades: {e}")
         _notify("Uppdatering misslyckades", str(e))
+        if tmp_dir:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
+        _installing = False
 
 
 def start_background_checker():
