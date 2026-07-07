@@ -49,7 +49,8 @@ except ImportError:
     from pystray import MenuItem as item
     from PIL import Image, ImageDraw
 
-WEB_PORT = 5757
+_DEV_MODE = "--dev" in sys.argv
+WEB_PORT = 5758 if _DEV_MODE else 5757
 
 # ── Global state ──────────────────────────────────────────────
 tracker_thread = None
@@ -266,8 +267,8 @@ def main():
 
 
 if __name__ == "__main__":
-    # Förhindra flera instanser med en låsfil
-    _LOCK = Path.home() / "activity_tracker" / "tray.lock"
+    # Förhindra flera instanser med en låsfil (separata lås för stabil/dev)
+    _LOCK = Path.home() / "activity_tracker" / ("tray.dev.lock" if _DEV_MODE else "tray.lock")
     import msvcrt, sys
 
     def _acquire_lock():
@@ -289,10 +290,13 @@ if __name__ == "__main__":
                     ["wmic", "process", "get", "name,commandline"],
                     capture_output=True, text=True
                 )
-                already_running = (
-                    "tray_app.py" in result.stdout or
-                    result.stdout.count("ActivityTracker.exe") > 1
-                )
+                if _DEV_MODE:
+                    already_running = result.stdout.count("tray_app.py --dev") > 0
+                else:
+                    already_running = (
+                        result.stdout.count("ActivityTracker.exe") > 1 or
+                        ("tray_app.py" in result.stdout and "--dev" not in result.stdout)
+                    )
                 if already_running:
                     logging.warning("En instans körs redan – avslutar")
                     sys.exit(0)
