@@ -7,7 +7,7 @@ Bygger en enkel .exe (tray_app.py som entry point)
 import sys
 from pathlib import Path
 
-APP_DIR = Path(r"C:\activity_tracker")
+APP_DIR = Path(r"C:\dev\verktyg\activity_tracker")
 
 a = Analysis(
     [str(APP_DIR / "tray_app.py")],

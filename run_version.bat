@@ -4,7 +4,7 @@
 ::             run_version.bat latest    (återgå till main/senaste)
 ::             run_version.bat           (visar tillgängliga versioner)
 
-cd C:\activity_tracker
+cd C:\dev\verktyg\activity_tracker
 
 if "%1"=="" (
     echo.
@@ -65,4 +65,4 @@ if not defined PYTHONW (
     exit /b 1
 )
 
-start "" "%PYTHONW%" "C:\activity_tracker\tray_app.py"
+start "" "%PYTHONW%" "C:\dev\verktyg\activity_tracker\tray_app.py"

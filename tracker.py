@@ -467,7 +467,13 @@ def write_live(open_since, open_title, open_url, active_proc):
 # ── Huvud-loop ─────────────────────────────────────────────────
 
 def run():
+    global _executor
     _stop_event.clear()
+    # Ny executor per start: om föregående körnings pool hängde sig permanent
+    # (t.ex. psutil.open_files() på ett processhandtag som fastnat efter lång
+    # viloläge) ärver annars watchdogens omstart samma trasiga pool.
+    old_executor, _executor = _executor, ThreadPoolExecutor(max_workers=2)
+    old_executor.shutdown(wait=False, cancel_futures=True)
     logging.info("Tracker starting...")
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
     init_db(conn)

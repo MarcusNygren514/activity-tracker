@@ -85,12 +85,13 @@ Appen registreras fÃ¶r autostart via Windows-registret:
 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` â†’ `ActivityTracker`
 
 VÃ¤rdet pekar normalt pÃ¥ kÃ¤llkoden:
-`"C:\Python312\pythonw.exe" "C:\activity_tracker\tray_app.py"`
+`"C:\Python312\pythonw.exe" "C:\dev\verktyg\activity_tracker\tray_app.py"`
 
 Inno Setup-installern skriver sin egen post (pekar pÃ¥ installerad `.exe`) men den skrivs Ã¶ver manuellt till kÃ¤llkods-sÃ¶kvÃ¤gen sÃ¥ att senaste kÃ¤llkod alltid anvÃ¤nds vid start.
 
 ## Bygga installer
 PyInstaller â†’ `.exe`, sedan Inno Setup fÃ¶r installationsprogram. Releaser gÃ¶rs via GitHub Releases â€“ backend servar nedladdningar.
+
 
 
 

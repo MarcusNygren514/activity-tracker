@@ -6,7 +6,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $ISCC       = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-$ROOT       = "C:\activity_tracker"
+$ROOT       = "C:\dev\verktyg\activity_tracker"
 $ISS        = "$ROOT\build\ActivityTracker.iss"
 $CLAUDE_MD  = "$ROOT\CLAUDE.md"
 $CHANGELOG  = "$ROOT\CHANGELOG.md"

@@ -4,10 +4,10 @@
 ; RÃ¶r INTE datafÃ¶ldern C:\Users\{user}\activity_tracker\
 
 #define AppName "Activity Tracker"
-#define AppVersion "v0.23b"
+#define AppVersion "v0.24b"
 #define AppPublisher "Oaks"
 #define AppExeName "ActivityTracker.exe"
-#define SourceDir "C:\activity_tracker\build\dist\ActivityTracker"
+#define SourceDir "C:\dev\verktyg\activity_tracker\build\dist\ActivityTracker"
 
 [Setup]
 AppId={{F3A2B1C4-9E7D-4F6A-B8C3-2D1E5F7A9B0C}
@@ -16,9 +16,9 @@ AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\ActivityTracker
 DisableProgramGroupPage=yes
-OutputDir=C:\activity_tracker\build\installer
+OutputDir=C:\dev\verktyg\activity_tracker\build\installer
 OutputBaseFilename=ActivityTracker_Setup_{#AppVersion}
-SetupIconFile=C:\activity_tracker\activity_tracker.ico
+SetupIconFile=C:\dev\verktyg\activity_tracker\activity_tracker.ico
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
@@ -63,6 +63,7 @@ Type: files; Name: "{userstartup}\ActivityTracker.exe"
 
 [UninstallDelete]
 ; LÃ¤mna kvar datafÃ¶ldern (C:\Users\{user}\activity_tracker\) â€“ rÃ¶r ej!
+
 
 
 

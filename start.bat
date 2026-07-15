@@ -1,5 +1,5 @@
 @echo off
-cd C:\activity_tracker
+cd C:\dev\verktyg\activity_tracker
 
 :: Starta Ollama om den inte redan körs
 tasklist /FI "IMAGENAME eq ollama.exe" 2>NUL | find /I "ollama.exe" >NUL
@@ -33,7 +33,7 @@ timeout /t 2 /nobreak >NUL
 if exist "%USERPROFILE%\activity_tracker\tray.lock" del /F "%USERPROFILE%\activity_tracker\tray.lock" >NUL 2>&1
 
 :: Starta appen
-start "" "%PYTHONW%" "C:\activity_tracker\tray_app.py"
+start "" "%PYTHONW%" "C:\dev\verktyg\activity_tracker\tray_app.py"
 
 :: Polla port 5757 tills appen svarar (max 30s)
 set WAITED=0

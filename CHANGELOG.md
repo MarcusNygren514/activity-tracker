@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€” Activity Tracker
 
+## v0.24b (2026-07-15)
+- Buggfix: spårningen kunde helt sluta logga aktivitet efter en lång vilolägesperiod och läkte då inte av sig själv, trots den inbyggda watchdogen – en delad trådpool för fönster- och dokumentsökningar kunde låsa sig permanent (t.ex. om ett anrop mot ett processhandtag hängde sig efter uppvakning), och watchdogens omstart ärvde av misstag samma trasiga pool. Poolen återskapas nu varje gång trackern startar om.
+
 ## v0.23b (2026-06-08)
 - Tray-ikonen visar nu aktuell version i tooltip och i högerklicksmenyn
 - Buggfix: tracker-kraschar loggas nu korrekt till tray.log (skrevs tidigare till stdout som förkastas i produktion)
@@ -143,6 +146,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 
