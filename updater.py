@@ -6,6 +6,7 @@ Installerar ALDRIG utan att användaren godkänner via tray-menyn.
 
 import os
 import re
+import sys
 import json
 import time
 import shutil
@@ -193,17 +194,30 @@ def _download_and_install(url: str, version: str):
         log.info("Nedladdning klar – startar installer")
         _notify("Installerar…", f"Activity Tracker {version} installeras. Appen startar om.")
 
-        subprocess.Popen(
-            [str(exe_path), "/VERYSILENT", "/SUPPRESSMSGBOXES",
-             "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS",
+        installer = subprocess.Popen(
+            [str(exe_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CLOSEAPPLICATIONS",
              "/LOG=" + str(tmp_dir / "install.log")],
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
+        # Vänta in installern helt innan vi startar om appen själva. Tidigare
+        # avslutade vi processen direkt (os._exit efter 3s sömn) och förlitade
+        # oss på Inno Setups /RESTARTAPPLICATIONS för omstarten – men den
+        # hinner ofta inte registrera vår process hos RestartManager innan vi
+        # redan avslutat den, så RESTARTAPPLICATIONS fick inget att starta om
+        # (bekräftat i v0.24b: "RestartManager found no applications using
+        # one of our files" trots lyckad filinstallation). Nu startar vi om
+        # appen explicit själva, oberoende av Inno Setups timing.
+        installer.wait(timeout=120)
 
         with _pending_lock:
             _pending = None
 
-        time.sleep(3)
+        if getattr(sys, "frozen", False):
+            try:
+                subprocess.Popen([sys.executable], creationflags=subprocess.CREATE_NO_WINDOW)
+            except Exception as e:
+                log.error(f"Kunde inte starta om appen efter uppdatering: {e}")
+
         os._exit(0)
 
     except Exception as e:

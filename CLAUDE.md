@@ -96,3 +96,4 @@ PyInstaller â†’ `.exe`, sedan Inno Setup fÃ¶r installationsprogram. Relea
 
 
 
+

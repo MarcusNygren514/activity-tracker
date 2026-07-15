@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€” Activity Tracker
 
+## v0.25b (2026-07-15)
+- Buggfix: OTA-uppdateringar kunde installera filerna korrekt men ändå inte starta om appen automatiskt (upptäckt vid v0.24b-utrullningen) – appen avslutade sig själv innan Inno Setups installer hann registrera processen hos Windows RestartManager, så /RESTARTAPPLICATIONS fick inget att starta om. Appen startar nu om sig själv explicit efter att installern bekräftat är klar, oberoende av Inno Setups timing.
+
 ## v0.24b (2026-07-15)
 - Buggfix: spårningen kunde helt sluta logga aktivitet efter en lång vilolägesperiod och läkte då inte av sig själv, trots den inbyggda watchdogen – en delad trådpool för fönster- och dokumentsökningar kunde låsa sig permanent (t.ex. om ett anrop mot ett processhandtag hängde sig efter uppvakning), och watchdogens omstart ärvde av misstag samma trasiga pool. Poolen återskapas nu varje gång trackern startar om.
 
@@ -146,6 +149,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 
