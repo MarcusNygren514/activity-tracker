@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€” Activity Tracker
 
+## v0.28b (2026-07-17)
+- Testrelease: verifierar att OTA-omstartsflödet från v0.27b (fristående vakt-process, installer startas efter att appen redan avslutat sig) faktiskt fungerar fullt ut i praktiken, inklusive automatisk omstart utan manuellt ingrepp.
+
 ## v0.27b (2026-07-17)
 - Buggfix: OTA-uppdateringar avbröts och rullades tyst tillbaka helt (utan felmeddelande, trots att nedladdnings-/installationsnotiserna såg normala ut) eftersom installern startades medan appen fortfarande kördes – Windows RestartManager hittade appen men kunde inte stänga den snyggt (pystray/Flask hanterar inte avstängningssignalen), och Inno Setup gav då upp installationen. Installern startas nu av en fristående vakt-process EFTER att appen redan avslutat sig själv, så det aldrig finns något körande att stänga.
 
@@ -155,6 +158,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 
