@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€” Activity Tracker
 
+## v0.30b (2026-07-17)
+- Testrelease: slutgiltig verifiering av det fullständiga OTA-flödet (vakt-process med -Verb RunAs och egen loggning) end-to-end, från v0.29b utan manuellt ingrepp.
+
 ## v0.29b (2026-07-17)
 - Buggfix: vakt-processens installer-anrop saknade `-Verb RunAs`, vilket krävs för att Windows ska höja installern till admin (PrivilegesRequired=admin) – utan det misslyckades starten direkt (ERROR_ELEVATION_REQUIRED) och vakt-processen, som saknade felhantering, avslutades helt tyst utan installation eller omstart. Fixat, plus en egen loggfil för vakt-processen så framtida fel går att felsöka.
 
@@ -161,6 +164,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 
