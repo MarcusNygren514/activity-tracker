@@ -234,9 +234,17 @@ def _download_and_install(url: str, version: str):
                 f"}}"
             )
             try:
+                # OBS: enbart CREATE_NO_WINDOW – DETACHED_PROCESS fick
+                # powershell.exe att krascha tyst direkt vid start (bekräftat
+                # genom att reproducera exakt samma Popen-anrop fristående:
+                # med DETACHED_PROCESS skrevs varken install.log eller
+                # watcher.log, utan den flaggan fungerade allt som väntat).
+                # Barnprocesser dödas inte automatiskt på Windows när
+                # föräldern avslutas, så DETACHED_PROCESS behövs inte för
+                # att vakt-processen ska överleva vårt eget os._exit(0).
                 subprocess.Popen(
                     ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", watcher_cmd],
-                    creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                    creationflags=subprocess.CREATE_NO_WINDOW,
                 )
             except Exception as e:
                 log.error(f"Kunde inte starta vakt-process för installation: {e}")

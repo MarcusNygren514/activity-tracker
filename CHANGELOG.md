@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€” Activity Tracker
 
+## v0.31b (2026-07-17)
+- Buggfix: vakt-processen kunde krascha helt tyst direkt vid start (varken install.log eller egen watcher.log skrevs) på grund av `DETACHED_PROCESS`-flaggan i kombination med `CREATE_NO_WINDOW` när PowerShell-processen skapades. Bekräftat genom fristående reproduktion av exakt samma anrop. Barnprocesser dödas inte automatiskt på Windows när föräldern avslutas, så flaggan behövdes aldrig – borttagen, kvar är bara `CREATE_NO_WINDOW`.
+
 ## v0.30b (2026-07-17)
 - Testrelease: slutgiltig verifiering av det fullständiga OTA-flödet (vakt-process med -Verb RunAs och egen loggning) end-to-end, från v0.29b utan manuellt ingrepp.
 
@@ -164,6 +167,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 
