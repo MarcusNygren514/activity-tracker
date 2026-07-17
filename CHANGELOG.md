@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€” Activity Tracker
 
+## v0.27b (2026-07-17)
+- Buggfix: OTA-uppdateringar avbröts och rullades tyst tillbaka helt (utan felmeddelande, trots att nedladdnings-/installationsnotiserna såg normala ut) eftersom installern startades medan appen fortfarande kördes – Windows RestartManager hittade appen men kunde inte stänga den snyggt (pystray/Flask hanterar inte avstängningssignalen), och Inno Setup gav då upp installationen. Installern startas nu av en fristående vakt-process EFTER att appen redan avslutat sig själv, så det aldrig finns något körande att stänga.
+
 ## v0.26b (2026-07-17)
 - Buggfix: v0.25b:s omstartsfix kunde få appen att tvångsdödas av installern själv (via /CLOSEAPPLICATIONS + RestartManager) medan den väntade in installationen, eftersom den då fortfarande höll sina egna filer låsta – uppdateringen kunde då avslutas helt tyst utan att appen startade om. Väntan och omstart sköts nu av en fristående vakt-process istället, så appen själv avslutar direkt och släpper sina fillås utan att blockera.
 
@@ -152,6 +155,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 

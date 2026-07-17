@@ -191,29 +191,29 @@ def _download_and_install(url: str, version: str):
         with urllib.request.urlopen(req, timeout=300) as resp:
             exe_path.write_bytes(resp.read())
 
-        log.info("Nedladdning klar – startar installer")
+        log.info("Nedladdning klar – förbereder installation")
         _notify("Installerar…", f"Activity Tracker {version} installeras. Appen startar om.")
-
-        installer = subprocess.Popen(
-            [str(exe_path), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CLOSEAPPLICATIONS",
-             "/LOG=" + str(tmp_dir / "install.log")],
-            creationflags=subprocess.CREATE_NO_WINDOW,
-        )
 
         with _pending_lock:
             _pending = None
 
-        # Vi får INTE vänta in installern från den här processen och sedan
-        # starta om oss själva – med /CLOSEAPPLICATIONS upptäcker installern
-        # att just VI håller våra egna filer (exe/pyd) låsta och tvångsdödar
-        # oss via RestartManager mitt i väntan (bekräftat: processen försvann
-        # tyst utan felmeddelande direkt efter "startar installer" i v0.25b).
-        # En fristående vakt-process (som inte äger några låsta filer) väntar
-        # istället in installern och startar om appen, medan vi själva
-        # avslutar direkt så installern kan ersätta våra filer.
+        # Appen kan inte stängas ner rent av Windows RestartManager (pystray/
+        # Flask saknar en fönsterloop som hanterar WM_QUERYENDSESSION). Om
+        # installern startas medan vi fortfarande lever – oavsett om vi själva
+        # väntar på den eller inte – hittar RestartManager oss, misslyckas med
+        # att stänga oss snyggt, och Inno Setup avbryter då HELA
+        # installationen och rullar tillbaka den helt tyst (bekräftat i
+        # install.log: "Some applications could not be shut down" → "User
+        # canceled the installation process", trots att våra egna tray-notiser
+        # såg helt normala ut). En fristående vakt-process startar därför
+        # installern (utan /CLOSEAPPLICATIONS – inget att stänga) EFTER att vi
+        # redan avslutat oss själva, väntar in den, och startar sedan om appen.
+        install_log = tmp_dir / "install.log"
         if getattr(sys, "frozen", False):
             watcher_cmd = (
-                f"Wait-Process -Id {installer.pid} -ErrorAction SilentlyContinue; "
+                f"Start-Sleep -Seconds 1; "
+                f"Start-Process -FilePath '{exe_path}' "
+                f"-ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/LOG={install_log}' -Wait; "
                 f"Start-Sleep -Seconds 1; "
                 f"Start-Process -FilePath '{sys.executable}'"
             )
@@ -223,7 +223,7 @@ def _download_and_install(url: str, version: str):
                     creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
                 )
             except Exception as e:
-                log.error(f"Kunde inte starta vakt-process för omstart: {e}")
+                log.error(f"Kunde inte starta vakt-process för installation: {e}")
 
         os._exit(0)
 
