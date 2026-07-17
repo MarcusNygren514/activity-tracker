@@ -4,7 +4,7 @@
 ; RÃ¶r INTE datafÃ¶ldern C:\Users\{user}\activity_tracker\
 
 #define AppName "Activity Tracker"
-#define AppVersion "v0.25b"
+#define AppVersion "v0.26b"
 #define AppPublisher "Oaks"
 #define AppExeName "ActivityTracker.exe"
 #define SourceDir "C:\dev\verktyg\activity_tracker\build\dist\ActivityTracker"
@@ -63,6 +63,7 @@ Type: files; Name: "{userstartup}\ActivityTracker.exe"
 
 [UninstallDelete]
 ; LÃ¤mna kvar datafÃ¶ldern (C:\Users\{user}\activity_tracker\) â€“ rÃ¶r ej!
+
 
 
 

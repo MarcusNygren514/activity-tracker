@@ -199,24 +199,31 @@ def _download_and_install(url: str, version: str):
              "/LOG=" + str(tmp_dir / "install.log")],
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
-        # Vänta in installern helt innan vi startar om appen själva. Tidigare
-        # avslutade vi processen direkt (os._exit efter 3s sömn) och förlitade
-        # oss på Inno Setups /RESTARTAPPLICATIONS för omstarten – men den
-        # hinner ofta inte registrera vår process hos RestartManager innan vi
-        # redan avslutat den, så RESTARTAPPLICATIONS fick inget att starta om
-        # (bekräftat i v0.24b: "RestartManager found no applications using
-        # one of our files" trots lyckad filinstallation). Nu startar vi om
-        # appen explicit själva, oberoende av Inno Setups timing.
-        installer.wait(timeout=120)
 
         with _pending_lock:
             _pending = None
 
+        # Vi får INTE vänta in installern från den här processen och sedan
+        # starta om oss själva – med /CLOSEAPPLICATIONS upptäcker installern
+        # att just VI håller våra egna filer (exe/pyd) låsta och tvångsdödar
+        # oss via RestartManager mitt i väntan (bekräftat: processen försvann
+        # tyst utan felmeddelande direkt efter "startar installer" i v0.25b).
+        # En fristående vakt-process (som inte äger några låsta filer) väntar
+        # istället in installern och startar om appen, medan vi själva
+        # avslutar direkt så installern kan ersätta våra filer.
         if getattr(sys, "frozen", False):
+            watcher_cmd = (
+                f"Wait-Process -Id {installer.pid} -ErrorAction SilentlyContinue; "
+                f"Start-Sleep -Seconds 1; "
+                f"Start-Process -FilePath '{sys.executable}'"
+            )
             try:
-                subprocess.Popen([sys.executable], creationflags=subprocess.CREATE_NO_WINDOW)
+                subprocess.Popen(
+                    ["powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", watcher_cmd],
+                    creationflags=subprocess.CREATE_NO_WINDOW | subprocess.DETACHED_PROCESS,
+                )
             except Exception as e:
-                log.error(f"Kunde inte starta om appen efter uppdatering: {e}")
+                log.error(f"Kunde inte starta vakt-process för omstart: {e}")
 
         os._exit(0)
 

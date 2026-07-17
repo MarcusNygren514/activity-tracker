@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€” Activity Tracker
 
+## v0.26b (2026-07-17)
+- Buggfix: v0.25b:s omstartsfix kunde få appen att tvångsdödas av installern själv (via /CLOSEAPPLICATIONS + RestartManager) medan den väntade in installationen, eftersom den då fortfarande höll sina egna filer låsta – uppdateringen kunde då avslutas helt tyst utan att appen startade om. Väntan och omstart sköts nu av en fristående vakt-process istället, så appen själv avslutar direkt och släpper sina fillås utan att blockera.
+
 ## v0.25b (2026-07-15)
 - Buggfix: OTA-uppdateringar kunde installera filerna korrekt men ändå inte starta om appen automatiskt (upptäckt vid v0.24b-utrullningen) – appen avslutade sig själv innan Inno Setups installer hann registrera processen hos Windows RestartManager, så /RESTARTAPPLICATIONS fick inget att starta om. Appen startar nu om sig själv explicit efter att installern bekräftat är klar, oberoende av Inno Setups timing.
 
@@ -149,6 +152,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 
