@@ -1,6 +1,6 @@
 ﻿# Activity Tracker â€“ AnvÃ¤ndarmanual
 
-> Senast uppdaterad: v0.31b (2026-07-17)
+> Senast uppdaterad: v0.32b (2026-07-17)
 
 ---
 
@@ -129,6 +129,7 @@ GÃ¥ till **Feedback**-fliken i grÃ¤nssnittet och beskriv problemet. Diagnost
 2. SÃ¶k pÃ¥ *Activity Tracker* och vÃ¤lj **Avinstallera**.
 
 > Din data (`%USERPROFILE%\activity_tracker\`) berÃ¶rs inte av avinstallationen.
+
 
 
 
