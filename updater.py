@@ -208,14 +208,30 @@ def _download_and_install(url: str, version: str):
         # såg helt normala ut). En fristående vakt-process startar därför
         # installern (utan /CLOSEAPPLICATIONS – inget att stänga) EFTER att vi
         # redan avslutat oss själva, väntar in den, och startar sedan om appen.
-        install_log = tmp_dir / "install.log"
+        install_log  = tmp_dir / "install.log"
+        watcher_log  = tmp_dir / "watcher.log"
         if getattr(sys, "frozen", False):
+            # -Verb RunAs krävs för att Start-Process ska trigga UAC-höjning –
+            # utan den försöker den starta installern oförhöjd, vilket
+            # misslyckas direkt (ERROR_ELEVATION_REQUIRED) eftersom
+            # PrivilegesRequired=admin. Allt loggas till watcher.log eftersom
+            # vakt-processen annars misslyckas helt tyst utan spår någonstans
+            # (bekräftat: v0.27b:s första skarpa test lämnade varken
+            # install.log eller någon omstart, utan någon som helst felkälla
+            # att felsöka mot).
             watcher_cmd = (
+                f"$ErrorActionPreference = 'Stop'; "
+                f"try {{ "
                 f"Start-Sleep -Seconds 1; "
                 f"Start-Process -FilePath '{exe_path}' "
-                f"-ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/LOG={install_log}' -Wait; "
+                f"-ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/LOG={install_log}' "
+                f"-Verb RunAs -Wait; "
                 f"Start-Sleep -Seconds 1; "
-                f"Start-Process -FilePath '{sys.executable}'"
+                f"Start-Process -FilePath '{sys.executable}'; "
+                f"'OK' | Out-File -FilePath '{watcher_log}' -Encoding utf8 "
+                f"}} catch {{ "
+                f"$_.Exception.Message | Out-File -FilePath '{watcher_log}' -Encoding utf8 "
+                f"}}"
             )
             try:
                 subprocess.Popen(
