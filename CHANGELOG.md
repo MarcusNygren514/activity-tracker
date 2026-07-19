@@ -1,5 +1,8 @@
 ﻿# Ã„ndringslogg â€” Activity Tracker
 
+## v0.33b (2026-07-19)
+- Buggfix: webb-servern kunde krascha helt tyst (t.ex. vid nätverksfel kring sömn/uppvakning) utan att någon startade om den – watchdogen övervakade bara spårningstråden, aldrig webb-servertråden, och kraschen loggades via `print()` som är osynligt i den fönsterlösa .exe:n. Watchdogen startar nu om webb-servern om tråden dör, och krascher loggas korrekt till tray.log.
+
 ## v0.32b (2026-07-17)
 - Testrelease: slutgiltig, ren verifiering av det fullständiga OTA-flödet end-to-end från v0.31b utan något manuellt ingrepp i själva installationskedjan.
 
@@ -170,6 +173,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 

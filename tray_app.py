@@ -121,8 +121,8 @@ def start_web():
     def run():
         try:
             web_app.run(port=WEB_PORT)
-        except Exception as e:
-            print(f"Web error: {e}")
+        except Exception:
+            logging.exception("Webb-servern kraschade")
 
     web_thread = threading.Thread(target=run, daemon=True)
     web_thread.start()
@@ -185,7 +185,7 @@ HEARTBEAT_TIMEOUT = 90  # sekunder utan tick → hängd
 
 
 def watchdog():
-    """Startar om trackern om den kraschar eller hänger (t.ex. efter viloläge)."""
+    """Startar om trackern och webb-servern om de kraschar eller hänger (t.ex. efter viloläge)."""
     global tracker_running
     while True:
         time.sleep(30)
@@ -204,6 +204,13 @@ def watchdog():
                     start_tracker()
             except FileNotFoundError:
                 pass  # live.json finns inte än (precis startat)
+
+        # Webb-servern har ingen egen omstartslogik – om tråden kraschar
+        # (t.ex. socket-fel kring sömn/uppvakning) lyssnar porten aldrig
+        # igen om inte något startar om den.
+        if web_thread is None or not web_thread.is_alive():
+            logging.warning("[Watchdog] Webb-servern är nere – startar om...")
+            start_web()
 
 
 def on_start(icon):
