@@ -57,6 +57,7 @@ tracker_thread = None
 web_thread = None
 tracker_running = False
 _tracker_lock = threading.Lock()
+_tray = None
 
 
 def make_icon(active=True):
@@ -182,6 +183,40 @@ def create_tray():
 
 LIVE_PATH = Path.home() / "activity_tracker" / "live.json"
 HEARTBEAT_TIMEOUT = 90  # sekunder utan tick → hängd
+_WAIT_LOCK_ARG = "--wait-lock"
+
+
+def restart_process():
+    """Startar en ny instans av appen och avslutar den här direkt.
+
+    En hängd tracker kan inte alltid startas om inom processen: efter viloläge
+    har processen fastnat i ett läge där inga nya trådar kommer igång, och då
+    hänger även watchdogens omstartsförsök. En ny process startar rent.
+    Popen skapar inga trådar i den här processen.
+    """
+    args = [a for a in sys.argv[1:] if a != _WAIT_LOCK_ARG] + [_WAIT_LOCK_ARG]
+    if getattr(sys, 'frozen', False):
+        cmd = [sys.executable] + args
+    else:
+        cmd = [sys.executable, str(Path(__file__).resolve())] + args
+    logging.warning(f"[Watchdog] Startar om hela processen: {cmd}")
+    try:
+        subprocess.Popen(
+            cmd,
+            cwd=str(_app_dir),
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            close_fds=True,
+        )
+    except Exception:
+        logging.exception("[Watchdog] Kunde inte starta ny process – behåller den gamla")
+        return
+    # Ta bort tray-ikonen så att den inte blir kvar som spöke
+    try:
+        if _tray is not None:
+            _tray.visible = False
+    except Exception:
+        pass
+    os._exit(0)
 
 
 def watchdog():
@@ -197,11 +232,8 @@ def watchdog():
             try:
                 age = time.time() - LIVE_PATH.stat().st_mtime
                 if age > HEARTBEAT_TIMEOUT:
-                    print(f"[Watchdog] Tracker hängd ({int(age)}s sedan senaste tick) – tvångsstarta om...")
-                    tracker.stop()          # signalera stop-event
-                    time.sleep(2)           # ge tråden en chans att avsluta
-                    tracker_running = False  # tvinga flaggan om tråden fortfarande hänger
-                    start_tracker()
+                    logging.warning(f"[Watchdog] Tracker hängd ({int(age)}s sedan senaste tick)")
+                    restart_process()
             except FileNotFoundError:
                 pass  # live.json finns inte än (precis startat)
 
@@ -251,7 +283,8 @@ def main():
         logging.warning(f"OTA-checker kunde inte startas: {e}")
 
     # Skapa och kör tray-ikonen
-    tray = create_tray()
+    global _tray
+    tray = _tray = create_tray()
     logging.info("Startar tray")
     print("[Activity Tracker] Klar! Ikon i aktivitetsfältet.")
     try:
@@ -285,7 +318,17 @@ if __name__ == "__main__":
         return fh
 
     _lock_fh = None
-    for _attempt in range(2):
+    if _WAIT_LOCK_ARG in sys.argv:
+        # Startad av watchdogens restart_process() – vänta tills den gamla
+        # processen har avslutats och släppt låset
+        for _ in range(30):
+            try:
+                _lock_fh = _acquire_lock()
+                logging.info("Omstartad av watchdog – låset taget")
+                break
+            except (OSError, IOError):
+                time.sleep(1)
+    for _attempt in range(0 if _lock_fh else 2):
         try:
             _lock_fh = _acquire_lock()
             break

@@ -42,7 +42,7 @@ DOC_EXTS = {'.docx','.doc','.xlsx','.xls','.pptx','.ppt','.pdf','.txt','.csv','.
             '.vsdx','.vsd','.vsdm','.dwg','.dxf','.mpp','.mpt'}
 
 # Executor för timeout-skyddade anrop
-_executor = ThreadPoolExecutor(max_workers=2)
+_executor = ThreadPoolExecutor(max_workers=3)
 
 # Stop-event som tray_app kan sätta för att avbryta loop:en vid hängning
 _stop_event = threading.Event()
@@ -133,20 +133,13 @@ def _enum_windows_inner():
 
 def get_all_visible_windows():
     """Hämtar alla synliga fönster med 5 sekunders timeout."""
-    holder = [None]
-
-    def _run():
-        try:
-            holder[0] = _enum_windows_inner()
-        except Exception:
-            pass
-
-    t = threading.Thread(target=_run, daemon=True)
-    t.start()
-    t.join(timeout=5)
-    if holder[0] is not None:
-        return holder[0]
-    return set(), {}
+    # Kör i den befintliga poolen i stället för en ny tråd per tick – trådstart
+    # är det som låser sig när processen hamnar i dåligt skick efter viloläge.
+    try:
+        future = _executor.submit(_enum_windows_inner)
+        return future.result(timeout=5)
+    except Exception:
+        return set(), {}
 
 
 # ── Dokumentsökväg via psutil (med timeout) ───────────────────
@@ -472,7 +465,7 @@ def run():
     # Ny executor per start: om föregående körnings pool hängde sig permanent
     # (t.ex. psutil.open_files() på ett processhandtag som fastnat efter lång
     # viloläge) ärver annars watchdogens omstart samma trasiga pool.
-    old_executor, _executor = _executor, ThreadPoolExecutor(max_workers=2)
+    old_executor, _executor = _executor, ThreadPoolExecutor(max_workers=3)
     old_executor.shutdown(wait=False, cancel_futures=True)
     logging.info("Tracker starting...")
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
