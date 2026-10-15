@@ -12,6 +12,8 @@ import os
 import time
 import logging
 import traceback
+import json
+import re
 import urllib.request
 from pathlib import Path
 
@@ -37,6 +39,14 @@ logging.basicConfig(
     encoding="utf-8",
 )
 logging.getLogger("PIL").setLevel(logging.WARNING)
+
+
+def _logga_okant_fel(typ, varde, tb):
+    """pythonw/exe har ingen konsol – utan detta dör processen helt tyst vid ett oväntat fel."""
+    logging.critical("Oväntat fel:\n" + "".join(traceback.format_exception(typ, varde, tb)))
+
+
+sys.excepthook = _logga_okant_fel
 
 try:
     import pystray
@@ -210,13 +220,78 @@ def restart_process():
     except Exception:
         logging.exception("[Watchdog] Kunde inte starta ny process – behåller den gamla")
         return
-    # Ta bort tray-ikonen så att den inte blir kvar som spöke
-    try:
-        if _tray is not None:
-            _tray.visible = False
-    except Exception:
-        pass
+    # Avsluta direkt – rör inte tray-ikonen. Efter viloläge kan tray-tråden vara hängd,
+    # och då blockerade `_tray.visible = False` för evigt: den gamla processen dog aldrig
+    # och höll kvar låset, så den nya kunde inte starta (2026-10-14). En kvarglömd ikon
+    # försvinner av sig själv när musen förs över den.
     os._exit(0)
+
+
+def _andra_instanser():
+    """Andra körande instanser i samma läge (stabil/dev): [(pid, startad som unix-tid eller None)].
+    None om det inte gick att ta reda på. wmic finns inte i nyare Windows 11 – därför PowerShell."""
+    ps = (
+        "Get-CimInstance Win32_Process | "
+        "Where-Object { ($_.Name -match '^pythonw?\\.exe$' -and $_.CommandLine -match 'tray_app\\.py') "
+        "-or $_.Name -eq 'ActivityTracker.exe' } | "
+        "Select-Object ProcessId, CommandLine, "
+        "@{n='Start';e={ if ($_.CreationDate) { [DateTimeOffset]::new($_.CreationDate).ToUnixTimeSeconds() } }} | "
+        "ConvertTo-Json -Compress"
+    )
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+            capture_output=True, text=True, timeout=60,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        data = json.loads(r.stdout or "[]")
+    except Exception:
+        logging.exception("Kunde inte lista processer")
+        return None
+    if isinstance(data, dict):
+        data = [data]
+    egna = {os.getpid(), os.getppid()}
+    instanser = []
+    for p in data:
+        cl = p.get("CommandLine") or ""
+        if p.get("ProcessId") in egna:
+            continue
+        # --dev som eget argument – inte som del av en sökväg
+        if bool(re.search(r'(^|\s)"?--dev"?(\s|$)', cl)) != _DEV_MODE:
+            continue
+        instanser.append((p["ProcessId"], p.get("Start")))
+    return instanser
+
+
+def _hantera_upptaget_las(ta_las):
+    """Låset hålls av någon annan. Kör en frisk instans → avsluta. Har den inte tickat på
+    länge (hängd, t.ex. efter viloläge) → avsluta den och ta över, så att en ny start
+    alltid fungerar utan manuell inblandning."""
+    instanser = _andra_instanser()
+    if instanser:
+        try:
+            alder = time.time() - LIVE_PATH.stat().st_mtime
+        except FileNotFoundError:
+            alder = float("inf")
+        # En nystartad instans har inte hunnit ticka – rör den inte.
+        nystartad = any(start and time.time() - start < 2 * HEARTBEAT_TIMEOUT for _, start in instanser)
+        if alder <= HEARTBEAT_TIMEOUT or nystartad:
+            logging.warning("En instans körs redan – avslutar")
+            sys.exit(0)
+        pids = [pid for pid, _ in instanser]
+        logging.warning(f"Instans {pids} har inte tickat på {int(alder)}s – avslutar den och tar över")
+        for pid in pids:
+            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+    elif instanser is None:
+        logging.warning("Kunde inte avgöra om en instans körs – försöker ta låset en stund till")
+    for _ in range(15):
+        try:
+            return ta_las()
+        except OSError:
+            time.sleep(1)
+    logging.error("Kunde inte ta låset – avslutar")
+    sys.exit(1)
 
 
 def watchdog():
@@ -328,41 +403,11 @@ if __name__ == "__main__":
                 break
             except (OSError, IOError):
                 time.sleep(1)
-    for _attempt in range(0 if _lock_fh else 2):
+    if _lock_fh is None:
         try:
             _lock_fh = _acquire_lock()
-            break
         except (OSError, IOError):
-            if _attempt == 0:
-                # Kontrollera om en verklig instans faktiskt körs
-                import subprocess
-                result = subprocess.run(
-                    ["wmic", "process", "get", "name,commandline"],
-                    capture_output=True, text=True
-                )
-                if _DEV_MODE:
-                    already_running = result.stdout.count("tray_app.py --dev") > 0
-                else:
-                    already_running = (
-                        result.stdout.count("ActivityTracker.exe") > 1 or
-                        ("tray_app.py" in result.stdout and "--dev" not in result.stdout)
-                    )
-                if already_running:
-                    logging.warning("En instans körs redan – avslutar")
-                    sys.exit(0)
-                # Stale lock – rensa och försök igen
-                logging.warning("Stale lock-fil hittad – rensar och startar om")
-                try:
-                    _LOCK.unlink(missing_ok=True)
-                except OSError:
-                    pass
-                time.sleep(1)  # ge eventuell döende process tid att frigöra låset
-            else:
-                logging.error("Kunde inte ta låset – avslutar")
-                sys.exit(1)
-
-    if _lock_fh is None:
-        sys.exit(1)
+            _lock_fh = _hantera_upptaget_las(_acquire_lock)
 
     try:
         logging.info("tray_app startar")

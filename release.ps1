@@ -1,4 +1,6 @@
-# release.ps1 – Bygger och publicerar en ny version av Activity Tracker
+﻿# release.ps1 – Bygger och publicerar en ny version av Activity Tracker
+# Sparas som UTF-8 MED BOM och läser filer med -Encoding UTF8 – annars läser Windows
+# PowerShell 5.1 allt som ANSI och förstör å/ä/ö i CHANGELOG, MANUAL och CLAUDE.md.
 # Användning: .\release.ps1
 # Krav: Python (med PyInstaller), Inno Setup 6, gh CLI inloggad
 
@@ -20,7 +22,7 @@ $VERSION = $versionLine.Matches[0].Groups[1].Value
 Write-Host "Version: $VERSION" -ForegroundColor Cyan
 
 # ── 2. Kontrollera att CHANGELOG har en "(ej släppt)"-post ──────────────────
-$clContent = Get-Content $CHANGELOG -Raw
+$clContent = Get-Content $CHANGELOG -Raw -Encoding UTF8
 if ($clContent -notmatch "## $([regex]::Escape($VERSION)) \(ej sl") {
     Write-Error "CHANGELOG.md saknar '## $VERSION (ej slappt)' - lagg till releaseposter forst"
     exit 1
@@ -33,19 +35,19 @@ Set-Content $CHANGELOG $clContent -Encoding UTF8
 Write-Host "CHANGELOG.md: datum satt till $today" -ForegroundColor Green
 
 # ── 4. Uppdatera version i ActivityTracker.iss ──────────────────────────────
-$issContent = Get-Content $ISS -Raw
+$issContent = Get-Content $ISS -Raw -Encoding UTF8
 $issContent = $issContent -replace '#define AppVersion ".*?"', "#define AppVersion `"$VERSION`""
 Set-Content $ISS $issContent -Encoding UTF8
 Write-Host "ActivityTracker.iss: version uppdaterad" -ForegroundColor Green
 
 # ── 5a. Uppdatera version i MANUAL.md ───────────────────────────────────────
-$manContent = Get-Content $MANUAL -Raw
+$manContent = Get-Content $MANUAL -Raw -Encoding UTF8
 $manContent = $manContent -replace '> Senast uppdaterad: v[^\n]+', "> Senast uppdaterad: $VERSION ($today)"
 Set-Content $MANUAL $manContent -Encoding UTF8
 Write-Host "MANUAL.md: version uppdaterad" -ForegroundColor Green
 
 # ── 5b. Uppdatera version i CLAUDE.md ───────────────────────────────────────
-$mdContent = Get-Content $CLAUDE_MD -Raw
+$mdContent = Get-Content $CLAUDE_MD -Raw -Encoding UTF8
 $mdContent = $mdContent -replace '`v[^`]+`\s*\(släppt [^)]+\)', "``$VERSION`` (släppt $today)"
 Set-Content $CLAUDE_MD $mdContent -Encoding UTF8
 Write-Host "CLAUDE.md: version uppdaterad" -ForegroundColor Green
@@ -85,7 +87,7 @@ Write-Host "Tagg $VERSION pushad" -ForegroundColor Green
 Write-Host "Skapar GitHub Release..." -ForegroundColor Cyan
 
 # Hämta releasenotes ur CHANGELOG (allt under versionsrubriken fram till nästa ##)
-$clLines   = Get-Content $CHANGELOG
+$clLines   = Get-Content $CHANGELOG -Encoding UTF8
 $inSection = $false
 $notes     = @()
 foreach ($line in $clLines) {
