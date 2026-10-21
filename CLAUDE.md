@@ -87,7 +87,7 @@ Vid upptaget lås (`_hantera_upptaget_las`): listar andra instanser via PowerShe
 `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `ADMIN_EMAIL`, `GITHUB_TOKEN`, `GITHUB_REPO`, `DB_PATH`
 
 ## Aktuell version
-`v0.33b` (släppt 2026-07-19). Se `CHANGELOG.md` för fullständig historik.
+`v0.34b` (släppt 2026-10-21). Se `CHANGELOG.md` för fullständig historik.
 
 ## Autostart
 Appen registreras för autostart via Windows-registret:
@@ -102,3 +102,4 @@ Inno Setup-installern skriver sin egen post (pekar på installerad `.exe`) men d
 PyInstaller → `.exe`, sedan Inno Setup för installationsprogram. Releaser görs via GitHub Releases – backend servar nedladdningar.
 `release.ps1` kräver en post `## vX (ej släppt)` i CHANGELOG som matchar `VERSION` i `web_app.py`.
 `release.ps1` ska vara sparad som UTF-8 **med BOM** och läsa filer med `-Encoding UTF8` – annars förstör Windows PowerShell 5.1 å/ä/ö i CHANGELOG, MANUAL och CLAUDE.md (hände tidigare, lagat 2026-10-15).
+

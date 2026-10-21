@@ -1,6 +1,6 @@
 ﻿# Ändringslogg — Activity Tracker
 
-## v0.34b (ej släppt)
+## v0.34b (2026-10-21)
 - Buggfix: trackern kunde sluta logga helt efter viloläge utan att watchdogen fick igång den igen – processen fastnade i ett läge där inga nya trådar startade, och watchdogens omstart hängde av samma skäl. Watchdogen startar nu en helt ny process och avslutar den gamla.
 - Buggfix: vid den omstarten kunde den gamla processen fastna på att dölja tray-ikonen (en hängd tray-tråd blockerade för evigt). Den höll då kvar låsfilen och port 5757, så appen gick inte att starta igen – varken via watchdogen, autostart eller launchern. Den gamla processen avslutas nu direkt.
 - Buggfix: appen kraschade helt tyst vid start om en annan instans höll låset, eftersom kontrollen använde `wmic` som inte längre finns i Windows 11. Kontrollen görs nu med PowerShell, och en hängd instans (som inte loggat på länge) avslutas automatiskt så att den nya kan ta över.
@@ -183,6 +183,7 @@
 - Inno Setup-installationsprogram
 - Autostart via Windows-registret (HKCU)
 - Databasmigreringar med PRAGMA user_version
+
 
 
 
