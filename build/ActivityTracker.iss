@@ -55,6 +55,8 @@ Filename: "{app}\{#AppExeName}"; Description: "Starta Activity Tracker nu"; Flag
 [UninstallRun]
 ; StÃ¤ng appen innan avinstallation
 Filename: "taskkill.exe"; Parameters: "/f /im {#AppExeName}"; Flags: runhidden; RunOnceId: "KillApp"
+; Ta bort vakten (schemalagd aktivitet som appen skapar vid start)
+Filename: "schtasks.exe"; Parameters: "/Delete /TN ActivityTracker-vakt /F"; Flags: runhidden; RunOnceId: "DelVakt"
 
 [InstallDelete]
 ; Ta bort gamla startfiler vid installation

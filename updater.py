@@ -23,6 +23,10 @@ log = logging.getLogger("updater")
 GITHUB_REPO     = "MarcusNygren514/activity-tracker"
 CURRENT_VERSION = ""
 CHECK_INTERVAL  = 86400    # sekunder (1 dygn)
+# Skrivs när appen avslutar sig för att installera en uppdatering. Vakten (schemalagd
+# aktivitet) startar inte appen medan den finns – annars kan den gamla exe:n starta
+# mitt i installationen (UAC-dialogen kan stå öppen länge) och låsa filerna.
+UPDATE_MARKER   = Path.home() / "activity_tracker" / "update_in_progress"
 
 _GITHUB_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -248,6 +252,10 @@ def _download_and_install(url: str, version: str):
                 )
             except Exception as e:
                 log.error(f"Kunde inte starta vakt-process för installation: {e}")
+            try:
+                UPDATE_MARKER.touch()
+            except OSError:
+                pass
 
         os._exit(0)
 

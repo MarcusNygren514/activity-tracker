@@ -321,6 +321,54 @@ def _hantera_upptaget_las(ta_las):
     sys.exit(1)
 
 
+VAKT_TASK = "ActivityTracker-vakt"
+
+# Skapar/uppdaterar vakten om den saknas eller pekar på något annat. Exe, argument och
+# katalog skickas via miljövariabler så att sökvägar med mellanslag inte behöver citeras.
+_VAKT_PS = r"""
+$ErrorActionPreference = 'Stop'
+$t = Get-ScheduledTask -TaskName $env:AT_TASK -ErrorAction SilentlyContinue
+if ($t -and $t.Actions[0].Execute -eq $env:AT_EXE -and $t.Actions[0].Arguments -eq $env:AT_ARGS) { 'ok'; exit }
+$user = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+$a = New-ScheduledTaskAction -Execute $env:AT_EXE -Argument $env:AT_ARGS -WorkingDirectory $env:AT_DIR
+$r = New-ScheduledTaskTrigger -Once -At (Get-Date).Date.AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 15)
+$c = Get-CimClass -Namespace Root/Microsoft/Windows/TaskScheduler -ClassName MSFT_TaskSessionStateChangeTrigger
+$u = New-CimInstance -CimClass $c -ClientOnly -Property @{ StateChange = 8; UserId = $user; Enabled = $true }
+$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances Parallel -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+$p = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName $env:AT_TASK -Description 'Startar Activity Tracker om den inte körs (var 15:e min och vid upplåsning). Respekterar Avsluta i tray-menyn.' -Action $a -Trigger @($r, $u) -Settings $s -Principal $p -Force | Out-Null
+'skapad'
+"""
+
+
+def ensure_vakt():
+    """Ser till att vakten (schemalagd aktivitet) finns och startar den här appen.
+    Fångar fall där processen dör utan att datorn startas om, t.ex. en avbruten
+    avstängning – då körs aldrig autostarten. Körs som användaren själv, utan admin."""
+    if _DEV_MODE:
+        return
+    if getattr(sys, 'frozen', False):
+        exe, args = sys.executable, _SCHEDULED_ARG
+    else:
+        exe = Path(sys.executable)
+        if exe.with_name("pythonw.exe").exists():
+            exe = exe.with_name("pythonw.exe")  # inget konsolfönster var 15:e minut
+        exe, args = str(exe), f'"{Path(__file__).resolve()}" {_SCHEDULED_ARG}'
+    env = dict(os.environ, AT_TASK=VAKT_TASK, AT_EXE=exe, AT_ARGS=args, AT_DIR=str(_app_dir))
+    try:
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", _VAKT_PS],
+            capture_output=True, text=True, timeout=60, env=env,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+        if r.stdout.strip() == "skapad":
+            logging.info(f"Vakt skapad/uppdaterad: {exe} {args}")
+        elif r.stdout.strip() != "ok":
+            logging.warning(f"Kunde inte skapa vakten: {r.stderr.strip()[:300]}")
+    except Exception:
+        logging.exception("Kunde inte skapa vakten")
+
+
 def watchdog():
     """Startar om trackern och webb-servern om de kraschar eller hänger (t.ex. efter viloläge)."""
     global tracker_running
@@ -407,6 +455,8 @@ def main():
     except Exception:
         logging.critical("Tray kraschade:\n" + traceback.format_exc())
 
+    ensure_vakt()
+
     # Håll huvudtråden vid liv – quit_app() anropar os._exit(0)
     logging.info("Huvudloop startar")
     try:
@@ -424,8 +474,14 @@ if __name__ == "__main__":
     if _SCHEDULED_ARG in sys.argv:
         if _QUIT_MARKER.exists():
             sys.exit(0)  # användaren har valt Avsluta – starta inte igen
+        try:
+            if time.time() - updater.UPDATE_MARKER.stat().st_mtime < 30 * 60:
+                sys.exit(0)  # en uppdatering installeras – starta inte mitt i den
+        except FileNotFoundError:
+            pass
     else:
         _QUIT_MARKER.unlink(missing_ok=True)
+        updater.UPDATE_MARKER.unlink(missing_ok=True)
 
     def _acquire_lock():
         _LOCK.parent.mkdir(exist_ok=True)

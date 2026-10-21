@@ -23,6 +23,8 @@
 **Appen startar nu automatiskt** – ett litet ikon visas i systemfältet (nere till höger, vid klockan).
 
 > **Activity Tracker startar automatiskt** vid varje Windows-inloggning – du behöver aldrig starta den manuellt. Den körs tyst i bakgrunden och loggar din aktivitet hela arbetsdagen.
+>
+> Skulle appen stängas av misstag eller hänga sig startar den igen av sig själv inom 15 minuter, eller när du låser upp datorn. Väljer du **Avsluta** i menyn förblir den avstängd tills nästa inloggning eller tills du startar den själv.
 
 ---
 
