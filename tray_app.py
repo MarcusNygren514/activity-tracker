@@ -24,6 +24,12 @@ if getattr(sys, 'frozen', False):
 else:
     _app_dir = Path(__file__).parent
 sys.path.insert(0, str(_app_dir))
+if "--doc-helper" in sys.argv:
+    # Exe-läge: samma exe startas som hjälpprocess för psutil.open_files() (se doc_helper.py).
+    # Avgrena före övriga importer så att hjälpprocessen inte laddar Flask m.m.
+    import doc_helper
+    doc_helper.serve_from_env()
+    sys.exit(0)
 import updater
 import tracker
 import web_app
@@ -60,6 +66,11 @@ except ImportError:
     from PIL import Image, ImageDraw
 
 _DEV_MODE = "--dev" in sys.argv
+# Schemalagd aktivitet (ActivityTracker-vakt) startar med --scheduled var 15:e min och
+# vid upplåsning. Har användaren valt "Avsluta" ska den inte starta appen igen –
+# markeringen tas bort vid nästa vanliga start (autostart vid inloggning eller manuellt).
+_SCHEDULED_ARG = "--scheduled"
+_QUIT_MARKER = Path.home() / "activity_tracker" / ("user_quit.dev" if _DEV_MODE else "user_quit")
 WEB_PORT = 5758 if _DEV_MODE else 5757
 
 # ── Global state ──────────────────────────────────────────────
@@ -146,6 +157,10 @@ def open_browser(icon=None, item=None):
 
 def quit_app(icon, item):
     print("[Tray] Avslutar...")
+    try:
+        _QUIT_MARKER.touch()
+    except OSError:
+        pass
     icon.stop()
     os._exit(0)
 
@@ -256,6 +271,8 @@ def _andra_instanser():
         cl = p.get("CommandLine") or ""
         if p.get("ProcessId") in egna:
             continue
+        if "--doc-helper" in cl:
+            continue  # trackerns hjälpprocess (ActivityTracker.exe --doc-helper), ingen instans
         # --dev som eget argument – inte som del av en sökväg
         if bool(re.search(r'(^|\s)"?--dev"?(\s|$)', cl)) != _DEV_MODE:
             continue
@@ -275,6 +292,16 @@ def _hantera_upptaget_las(ta_las):
             alder = float("inf")
         # En nystartad instans har inte hunnit ticka – rör den inte.
         nystartad = any(start and time.time() - start < 2 * HEARTBEAT_TIMEOUT for _, start in instanser)
+        # Direkt efter uppvaknande (vakten körs vid upplåsning) har en frisk instans
+        # kanske inte hunnit ticka än – ge den en chans innan den dödas
+        for _ in range(20 if alder > HEARTBEAT_TIMEOUT and not nystartad else 0):
+            time.sleep(1)
+            try:
+                alder = time.time() - LIVE_PATH.stat().st_mtime
+            except FileNotFoundError:
+                pass
+            if alder <= HEARTBEAT_TIMEOUT:
+                break
         if alder <= HEARTBEAT_TIMEOUT or nystartad:
             logging.warning("En instans körs redan – avslutar")
             sys.exit(0)
@@ -297,15 +324,23 @@ def _hantera_upptaget_las(ta_las):
 def watchdog():
     """Startar om trackern och webb-servern om de kraschar eller hänger (t.ex. efter viloläge)."""
     global tracker_running
+    last_loop = time.time()
+    resumed_at = 0.0
     while True:
         time.sleep(30)
+        now = time.time()
+        # Har watchdogen själv stått still (datorn har sovit) hinner den annars vakna före
+        # trackern och se en gammal live.json – räkna i så fall från uppvaknandet
+        if now - last_loop > 60:
+            resumed_at = now
+        last_loop = now
         if not tracker_running:
             print("[Watchdog] Tracker är nere – startar om...")
             start_tracker()
         else:
             # Kontrollera att trackern faktiskt tickar (uppdaterar live.json)
             try:
-                age = time.time() - LIVE_PATH.stat().st_mtime
+                age = now - max(LIVE_PATH.stat().st_mtime, resumed_at)
                 if age > HEARTBEAT_TIMEOUT:
                     logging.warning(f"[Watchdog] Tracker hängd ({int(age)}s sedan senaste tick)")
                     restart_process()
@@ -385,6 +420,12 @@ if __name__ == "__main__":
     # Förhindra flera instanser med en låsfil (separata lås för stabil/dev)
     _LOCK = Path.home() / "activity_tracker" / ("tray.dev.lock" if _DEV_MODE else "tray.lock")
     import msvcrt, sys
+
+    if _SCHEDULED_ARG in sys.argv:
+        if _QUIT_MARKER.exists():
+            sys.exit(0)  # användaren har valt Avsluta – starta inte igen
+    else:
+        _QUIT_MARKER.unlink(missing_ok=True)
 
     def _acquire_lock():
         _LOCK.parent.mkdir(exist_ok=True)

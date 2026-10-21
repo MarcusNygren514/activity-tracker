@@ -26,6 +26,7 @@ a = Analysis(
         "jinja2",
         "click",
         "psutil",
+        "doc_helper",
         "sqlite3",
         "ctypes",
         "ctypes.wintypes",

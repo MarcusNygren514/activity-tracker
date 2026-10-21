@@ -12,7 +12,7 @@ import shutil
 import logging
 import tempfile
 import threading
-import psutil
+import doc_helper
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
@@ -142,30 +142,31 @@ def get_all_visible_windows():
         return set(), {}
 
 
-# ── Dokumentsökväg via psutil (med timeout) ───────────────────
+# ── Dokumentsökväg via psutil (i separat process, med timeout) ─
 
-def _get_doc_path(pid, title):
-    """Körs i separat tråd med timeout för att undvika hängning."""
+# psutil.open_files() körs i en egen process – se doc_helper.py för varför
+_doc_helper = doc_helper.DocHelper()
+
+
+def _get_doc_path(pid, title, timeout):
     try:
-        proc = psutil.Process(pid)
-        try:
-            files = proc.open_files()
-        except Exception:
+        files = _doc_helper.open_files(pid, timeout)
+        if not files:
             return None
 
         candidates = []
-        for f in files:
+        for path in files:
             try:
-                ext = os.path.splitext(f.path)[1].lower()
+                ext = os.path.splitext(path)[1].lower()
                 if ext not in DOC_EXTS:
                     continue
-                p = f.path.lower()
+                p = path.lower()
                 # Skippa cache- och tempfiler
                 if any(s in p for s in ['officfilecache', 'appdata\\local\\temp',
                                          'inetcache', 'appdata\\roaming',
                                          'appdata\\locallow']):
                     continue
-                candidates.append(f.path)
+                candidates.append(path)
             except Exception:
                 continue
 
@@ -186,11 +187,7 @@ def _get_doc_path(pid, title):
 
 def get_document_path(pid, title):
     """Hämtar dokumentsökväg med 2 sekunders timeout."""
-    try:
-        future = _executor.submit(_get_doc_path, pid, title)
-        return future.result(timeout=2)
-    except Exception:
-        return None
+    return _get_doc_path(pid, title, timeout=2)
 
 
 # Program där doc-path-sökning inte är meningsfull
@@ -213,11 +210,7 @@ def get_bg_document_path(pid, proc, title):
     key = (proc, title)
     if key in _bg_doc_cache:
         return _bg_doc_cache[key]
-    try:
-        future = _executor.submit(_get_doc_path, pid, title)
-        result = future.result(timeout=0.5)
-    except Exception:
-        result = None
+    result = _get_doc_path(pid, title, timeout=0.5)
     _bg_doc_cache[key] = result
     return result
 
@@ -516,6 +509,7 @@ def run():
 
             # Hoppa över resten av loopen medan skärmen är inaktiv
             if screen_inactive:
+                write_live({}, {}, {}, None)  # livstecken till watchdogen – inget pågår
                 if _stop_event.wait(POLL_INTERVAL):
                     break
                 continue

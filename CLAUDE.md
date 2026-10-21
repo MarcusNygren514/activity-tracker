@@ -18,6 +18,7 @@ Lokal Windows-app (Python/Flask) som spårar aktiva fönster och program. Körs 
 | `web_app.py` | Flask-app + fullständig HTML/CSS/JS som enstrengstemplate (~4000 rader) |
 | `tray_app.py` | Samordnar tracker + webb, watchdog, OTA, tray-ikon |
 | `updater.py` | OTA-uppdaterare – kollar Railway-backend en gång/dygn |
+| `doc_helper.py` | Hjälpprocess för `psutil.open_files()` (dokumentsökvägar) – körs isolerat, se nedan |
 | `geotracker.py` | Valfri GPS-loggning via Windows Location API + Nominatim |
 | `planner.py` | Läser Oaks Resursplanering.xlsm (openpyxl, read-only kopia) |
 | `backend/app.py` | Railway-backend: registrering, feedback, OTA-distribution via GitHub Releases |
@@ -54,7 +55,9 @@ All HTML/CSS/JS är inbäddad som en Python-råsträng `HTML = r"""..."""` i `we
 - Vilolägesdetektering: om >60s gått sedan förra ticken → flush alla perioder + ny session
 - Skärmsläckar/låsskärm: `SystemParametersInfoW(0x0072)` → stoppa loggning
 - Windows API-anrop körs med timeout via `ThreadPoolExecutor` (skyddar mot hängning)
-- Watchdog i tray_app kontrollerar `live.json`-ålder (timeout: 90s). Vid hängning startas en **ny process** (`--wait-lock`) och den gamla avslutas med `os._exit(0)` – efter viloläge kan processen hamna i ett läge där inga nya trådar kommer igång. Rör inte tray-ikonen före `os._exit` – en hängd tray-tråd blockerar då för evigt (2026-10-14).
+- **`psutil.open_files()` får aldrig köras i tracker-processen.** Den håller GIL under hela anropet (fryser alla trådar, även watchdogen) och dödar sin egen hjälptråd med `TerminateThread` när ett handtag fastnar – det kan lämna Windows-lås/heap trasiga: nya trådar startar aldrig, krasch i `ntdll.dll` (2026-10-05, 2026-10-21). Körs i `doc_helper.py`: egen process (källkod: `doc_helper.py`, exe: `ActivityTracker.exe --doc-helper`, avgrenas överst i tray_app före tunga importer), named pipe via `multiprocessing.connection`, timeout per anrop, dödas efter 10 s utan svar och startas om efter 30 s. Ligger i ett Windows-jobb med kill-on-close så att den dör med trackern. `_andra_instanser` ignorerar `--doc-helper`.
+- Under skärmsläckare skriver trackern tom live.json som livstecken (annars ser watchdogen den som hängd)
+- Watchdog i tray_app kontrollerar `live.json`-ålder (timeout: 90s). Vid hängning startas en **ny process** (`--wait-lock`) och den gamla avslutas med `os._exit(0)` – efter viloläge kan processen hamna i ett läge där inga nya trådar kommer igång. Har watchdogen själv stått still > 60 s (datorn har sovit) räknas åldern från uppvaknandet, inte från senaste tick – annars falsklarm direkt efter uppvaknande. Rör inte tray-ikonen före `os._exit` – en hängd tray-tråd blockerar då för evigt (2026-10-14).
 - Watchdogen startar också om webb-servertråden om den dör
 
 **Webbläsarhistorik:**
@@ -74,7 +77,9 @@ All HTML/CSS/JS är inbäddad som en Python-råsträng `HTML = r"""..."""` i `we
 **Databas-migrering:** inline med `PRAGMA user_version` i `tracker.py::init_db()`
 
 **Instansskydd:** `msvcrt.locking` på `~/activity_tracker/tray.lock` (dev: `tray.dev.lock`)  
-Vid upptaget lås (`_hantera_upptaget_las`): listar andra instanser via PowerShell `Get-CimInstance` (python/pythonw med `tray_app.py`, eller `ActivityTracker.exe`; `--dev` som eget argument skiljer lägena åt). Frisk instans (live.json < 90 s) eller nystartad (< 3 min) → avsluta. Hängd → `taskkill` och ta över låset. Aldrig mer manuell inblandning. **Använd inte `wmic`** – finns inte i nyare Windows 11 (det fick appen att krascha tyst vid start).
+Vid upptaget lås (`_hantera_upptaget_las`): listar andra instanser via PowerShell `Get-CimInstance` (python/pythonw med `tray_app.py`, eller `ActivityTracker.exe`; `--dev` som eget argument skiljer lägena åt). Frisk instans (live.json < 90 s) eller nystartad (< 3 min) → avsluta. Gammal live.json → vänta upp till 20 s på en tick (vakten körs vid upplåsning, precis efter uppvaknande) innan den räknas som hängd. Hängd → `taskkill` och ta över låset. Aldrig mer manuell inblandning. **Använd inte `wmic`** – finns inte i nyare Windows 11 (det fick appen att krascha tyst vid start).
+
+**Vakt (schemalagd aktivitet):** `ActivityTracker-vakt` i Schemaläggaren kör `tray_app.py --scheduled` var 15:e minut och vid upplåsning – fångar fall där processen dödats utan omstart av datorn (t.ex. avbruten avstängning 2026-10-17). Krav: ingen körtidsgräns (`ExecutionTimeLimit` 0), `MultipleInstances Parallel` (annars hoppas kontroller över när aktiviteten själv startat appen), tillåt batteri. "Avsluta" i tray-menyn skriver `~/activity_tracker/user_quit` (dev: `user_quit.dev`); `--scheduled` avslutar direkt om den finns, vanlig start (autostart/manuell) tar bort den. Installern skapar inte aktiviteten än.
 
 **Loggning:** i praktiken till `~/activity_tracker/tracker.log` (tracker.py konfigurerar loggningen först). Oväntade fel i tray_app loggas via `sys.excepthook` – pythonw/exe har ingen konsol.
 
